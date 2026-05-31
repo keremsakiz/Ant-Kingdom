@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ant Kingdom</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #3a2a18;
+      font-family: -apple-system, sans-serif; -webkit-user-select: none; user-select: none; }
+    canvas { display: block; touch-action: none; }
+    #hud {
+      position: fixed; top: 10px; left: 10px; right: 10px; z-index: 10;
+      display: flex; justify-content: space-between; color: #fff; font-size: 16px;
+      pointer-events: none;
+    }
+    .pill { background: rgba(0,0,0,0.45); padding: 6px 12px; border-radius: 10px; }
+    #overlay {
+      position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; color: #fff; text-align: center;
+      background: rgba(20,12,4,0.85);
+    }
+    #overlay h1 { font-size: 34px; margin: 0 0 6px; }
+    #overlay p { font-size: 18px; margin: 4px 0 20px; opacity: 0.9; }
+    #overlay button {
+      font-size: 20px; padding: 12px 30px; border: none; border-radius: 12px;
+      background: #7cc36b; color: #1f150a; font-weight: bold; cursor: pointer;
+    }
+    #overlay button:active { transform: scale(0.96); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="pill">🍃 Yem: <span id="score">0</span></div>
+    <div class="pill">🐜 <span id="pop">0</span></div>
+    <div class="pill">⏱ <span id="time">60</span></div>
+  </div>
+
+  <div id="overlay">
+    <h1 id="title">🐜 Ant Kingdom</h1>
+    <p id="subtitle">Ekrana dokunarak yem bırak,<br>karıncalar yuvaya taşısın!<br>60 saniyede en çok yemi topla.</p>
+    <button id="startBtn">Başla</button>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    let W, H;
+    function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; setupPheromone(); }
+
+    const nest = { x: () => W / 2, y: () => H / 2, r: 32 };
+    let score = 0, timeLeft = 60, playing = false, timerId = null;
+    const scoreEl = document.getElementById("score");
+    const popEl = document.getElementById("pop");
+    const timeEl = document.getElementById("time");
+    const overlay = document.getElementById("overlay");
+    const title = document.getElementById("title");
+    const subtitle = document.getElementById("subtitle");
+    const startBtn = document.getElementById("startBtn");
+
+    // ---- Feromon ----
+    const CELL = 12;
+    let cols, rows, pher;
+    function setupPheromone() {
+      cols = Math.ceil(W / CELL); rows = Math.ceil(H / CELL);
+      pher = new Float32Array(cols * rows);
+    }
+    function pherIndex(x, y) {
+      const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL);
+      if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return -1;
+      return cy * cols + cx;
+    }
+    function addPher(x, y, a) { const i = pherIndex(x, y); if (i >= 0) pher[i] = Math.min(pher[i] + a, 100); }
+    function sensePher(ant) {
+      const ahead = 18; let best = -1, bestDir = null;
+      for (let a = -0.6; a <= 0.6; a += 0.3) {
+        const ang = ant.angle + a;
+        const i = pherIndex(ant.x + Math.cos(ang)*ahead, ant.y + Math.sin(ang)*ahead);
+        if (i >= 0 && pher[i] > best) { best = pher[i]; bestDir = ang; }
+      }
+      return best > 1 ? bestDir : null;
+    }
+
+    // ---- Yem ----
+    const foods = [];
+    function spawnFood(x, y) {
+      if (x === undefined) { x = 50 + Math.random()*(W-100); y = 50 + Math.random()*(H-100); }
+      foods.push({ x, y });
+    }
+
+    function angleDiff(t, c) { let d = t - c; while (d > Math.PI) d -= Math.PI*2; while (d < -Math.PI) d += Math.PI*2; return d; }
+
+    // ---- Karınca ----
+    class Ant {
+      constructor() { this.x = nest.x(); this.y = nest.y(); this.angle = Math.random()*Math.PI*2; this.speed = 1.7; this.carrying = false; }
+      update() {
+        let target = null;
+        if (this.carrying) { target = { x: nest.x(), y: nest.y() }; addPher(this.x, this.y, 3); }
+        else {
+          let nearest = null, nd = 90*90;
+          for (const f of foods) { const d = (f.x-this.x)**2+(f.y-this.y)**2; if (d < nd) { nd = d; nearest = f; } }
+          if (nearest) target = nearest;
+          else { const dir = sensePher(this); if (dir !== null) this.angle += angleDiff(dir, this.angle)*0.15; }
+        }
+        if (target) { const des = Math.atan2(target.y-this.y, target.x-this.x); this.angle += angleDiff(des, this.angle)*0.1; }
+        else if (sensePher(this) === null) this.angle += (Math.random()-0.5)*0.4;
+
+        this.x += Math.cos(this.angle)*this.speed; this.y += Math.sin(this.angle)*this.speed;
+        if (this.x < 5 || this.x > W-5) this.angle = Math.PI - this.angle;
+        if (this.y < 5 || this.y > H-5) this.angle = -this.angle;
+        this.x = Math.max(5, Math.min(W-5, this.x)); this.y = Math.max(5, Math.min(H-5, this.y));
+
+        if (!this.carrying) {
+          for (let i = foods.length-1; i >= 0; i--) {
+            const dx=this.x-foods[i].x, dy=this.y-foods[i].y;
+            if (dx*dx+dy*dy < 100) { foods.splice(i,1); this.carrying=true; this.angle+=Math.PI; break; }
+          }
+        } else {
+          const dx=this.x-nest.x(), dy=this.y-nest.y();
+          if (dx*dx+dy*dy < (nest.r+4)**2) {
+            this.carrying=false; this.angle+=Math.PI; score++; scoreEl.textContent=score;
+            if (score % 3 === 0 && ants.length < 80) { ants.push(new Ant()); popEl.textContent=ants.length; }
+          }
+        }
+      }
+      draw() {
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+        ctx.fillStyle = "#4a2f15";
+        ctx.beginPath(); ctx.ellipse(-5,0,4,3,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0,0,3,2.5,0,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(5,0,3,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle="#4a2f15"; ctx.lineWidth=0.8;
+        ctx.beginPath(); ctx.moveTo(6,-1); ctx.lineTo(9,-3); ctx.moveTo(6,1); ctx.lineTo(9,3); ctx.stroke();
+        ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(6,-1.3,0.9,0,Math.PI*2); ctx.arc(6,1.3,0.9,0,Math.PI*2); ctx.fill();
+        if (this.carrying) { ctx.fillStyle="#7cc36b"; ctx.beginPath(); ctx.arc(8,0,3,0,Math.PI*2); ctx.fill(); }
+        ctx.restore();
+      }
+    }
+
+    // ---- Dokunma / tıklama ile yem koy ----
+    function placeFood(clientX, clientY) {
+      if (!playing) return;
+      const dx = clientX - nest.x(), dy = clientY - nest.y();
+      if (dx*dx + dy*dy < (nest.r+10)**2) return; // yuvanın üstüne koyma
+      spawnFood(clientX, clientY);
+    }
+    canvas.addEventListener("mousedown", e => placeFood(e.clientX, e.clientY));
+    canvas.addEventListener("touchstart", e => {
+      e.preventDefault();
+      for (const t of e.touches) placeFood(t.clientX, t.clientY);
+    }, { passive: false });
+
+    // ---- Zemin dokusu ----
+    let groundDots = [];
+    function makeGround() {
+      groundDots = [];
+      for (let i = 0; i < 120; i++)
+        groundDots.push({ x: Math.random(), y: Math.random(), r: 1+Math.random()*2,
+          c: Math.random()>0.5 ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.04)" });
+    }
+
+    // ---- Oyun kontrolü ----
+    let ants = [];
+    function startGame() {
+      resize(); makeGround();
+      ants = []; foods.length = 0;
+      for (let i = 0; i < 14; i++) ants.push(new Ant());
+      for (let i = 0; i < 5; i++) spawnFood();
+      score = 0; timeLeft = 60; playing = true;
+      scoreEl.textContent = 0; popEl.textContent = ants.length; timeEl.textContent = 60;
+      overlay.classList.add("hidden");
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(() => {
+        timeLeft--; timeEl.textContent = timeLeft;
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+    }
+    function endGame() {
+      playing = false; clearInterval(timerId);
+      title.textContent = "⏱ Süre doldu!";
+      subtitle.innerHTML = "Topladığın yem: <b>" + score + "</b><br>Koloni büyüklüğü: <b>" + ants.length + " karınca</b>";
+      startBtn.textContent = "Tekrar Oyna";
+      overlay.classList.remove("hidden");
+    }
+    startBtn.addEventListener("click", startGame);
+    window.addEventListener("resize", () => { if (!playing) resize(); });
+    resize();
+
+    // ---- Çizim döngüsü ----
+    function loop() {
+      const g = ctx.createRadialGradient(W/2,H/2,50,W/2,H/2,Math.max(W,H)/1.2);
+      g.addColorStop(0,"#4a3320"); g.addColorStop(1,"#2e2012");
+      ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+      if (pher) for (let cy=0; cy<rows; cy++) for (let cx=0; cx<cols; cx++) {
+        const i = cy*cols+cx, v = pher[i];
+        if (v > 0.5) { ctx.fillStyle="rgba(120,200,110,"+Math.min(v/60,0.4)+")"; ctx.fillRect(cx*CELL,cy*CELL,CELL,CELL); pher[i]*=0.992; }
+        else pher[i]=0;
+      }
+      for (const d of groundDots) { ctx.fillStyle=d.c; ctx.beginPath(); ctx.arc(d.x*W,d.y*H,d.r,0,Math.PI*2); ctx.fill(); }
+
+      ctx.fillStyle="#1f150a"; ctx.beginPath(); ctx.arc(nest.x(),nest.y(),nest.r,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="#6b4a28"; ctx.lineWidth=4; ctx.stroke();
+      ctx.fillStyle="#120c05"; ctx.beginPath(); ctx.arc(nest.x(),nest.y(),nest.r*0.5,0,Math.PI*2); ctx.fill();
+
+      for (const f of foods) {
+        ctx.fillStyle="#7cc36b"; ctx.beginPath(); ctx.arc(f.x,f.y,5,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle="#a3e08f"; ctx.beginPath(); ctx.arc(f.x-1.5,f.y-1.5,1.8,0,Math.PI*2); ctx.fill();
+      }
+
+      if (playing) for (const ant of ants) { ant.update(); ant.draw(); }
+      else for (const ant of ants) ant.draw();
+
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>
