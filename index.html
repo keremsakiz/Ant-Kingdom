@@ -24,7 +24,14 @@ const CONFIG = {
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
   WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
-  POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 }
+  POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 },
+  BUILDINGS: {
+    moat:      { cost: 20, hp:  50, emoji: '🌊' },
+    barricade: { cost: 30, hp: 120, emoji: '🪨' },
+    barracks:  { cost: 50, hp:  80, emoji: '⚔️' },
+    tower:     { cost: 80, hp:  60, emoji: '🍄' },
+    alarm:     { cost: 25, hp:  40, emoji: '🔔' }
+  }
 };
 
 // ===== AUDIO (TAŞINDI — değiştirilmedi, sadece blok olarak korundu) =====
@@ -678,13 +685,39 @@ function drawHUD() {
     px += pw + gap;
   }
 
-  // Bottom building bar placeholder
+  // Alt bina paneli
+  const barH = 80;
   ctx.fillStyle = 'rgba(0,0,0,0.52)';
-  ctx.fillRect(0, H - 80, W, 80);
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.textAlign = 'center';
-  ctx.font = '12px -apple-system, sans-serif';
-  ctx.fillText('İnşa paneli — FAZ 3\'te aktif olacak', W / 2, H - 44);
+  ctx.fillRect(0, H - barH, W, barH);
+
+  const btnW = 56, btnH = 58, btnGap = 8;
+  const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
+  let bx = Math.round(W / 2 - totalBtnW / 2);
+  const by = H - barH + 11;
+
+  ctx.save();
+  for (const type of BUILDING_TYPES) {
+    const cfg    = CONFIG.BUILDINGS[type];
+    const afford = food >= cfg.cost;
+    ctx.globalAlpha = afford ? 1 : 0.4;
+    ctx.fillStyle = 'rgba(50,35,15,0.85)';
+    rrect(bx, by, btnW, btnH, 8); ctx.fill();
+    ctx.strokeStyle = afford ? '#c8a050' : '#6a4520';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(cfg.emoji, bx + btnW / 2, by + btnH / 2 - 8);
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = afford ? '#ffe08f' : '#ff8888';
+    ctx.fillText(cfg.cost, bx + btnW / 2, by + btnH - 5);
+    ctx.globalAlpha = 1;
+    bx += btnW + btnGap;
+  }
+  ctx.restore();
 }
 
 // ===== ANT SHAPE (shared utility for menu dekor + future Ant class) =====
@@ -709,10 +742,24 @@ function drawAntShape(x, y, angle, wig, bodyColor, scale) {
 
 // ===== PLAYING TILE TAP =====
 function onPlayingTap(x, y) {
-  const g = toGrid(x, y);
-  if (inBounds(g.col, g.row)) {
-    console.log(`[FAZ 0] Tile dokunuldu: col=${g.col}, row=${g.row}, tip=${grid[g.row][g.col].type}`);
+  // Radyal menü açıksa — önce menüyle etkileş
+  if (radialMenu) {
+    const hit = radialHit(x, y);
+    if (hit && food >= CONFIG.BUILDINGS[hit].cost) {
+      placeBuilding(hit); // içinde radialMenu = null yapar
+    } else if (!hit) {
+      radialMenu = null;  // dışına tıklama → kapat
+    }
+    // yemi yetmiyorsa ikon tıklanamaz, menü açık kalır
+    return;
   }
+
+  // Menü kapalı → tile seç
+  const g = toGrid(x, y);
+  if (!inBounds(g.col, g.row)) return;
+  if (grid[g.row][g.col].type === 'nest') return;
+  if (buildings.some(b => b.gridX === g.col && b.gridY === g.row)) return;
+  openRadialMenu(g.col, g.row);
 }
 
 // ===== DEPTH SORT SCAFFOLD =====
@@ -818,6 +865,121 @@ function spawnFood(col, row, type) {
   const jx = (Math.random() - 0.5) * CONFIG.TILE.W * 0.4;
   const jy = (Math.random() - 0.5) * CONFIG.TILE.H * 0.4;
   foods.push({ wx: w.x + jx, wy: w.y + jy, type, age: 0 });
+}
+
+// ===== BUILDINGS =====
+const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm'];
+let buildings   = [];
+let radialMenu  = null; // { col, row } — grid hücresi
+let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
+
+const RADIAL_R  = 58; // ikon yayı yarıçapı (screen px)
+const RADIAL_IR = 22; // ikon daire yarıçapı
+
+class Building {
+  constructor(type, col, row) {
+    this.type  = type;
+    this.gridX = col;
+    this.gridY = row;
+    this.maxHP = CONFIG.BUILDINGS[type].hp;
+    this.hp    = this.maxHP;
+    this.level = 1;
+  }
+  draw() {
+    const { x, y } = toScreen(this.gridX, this.gridY);
+    const s   = camera.scale;
+    const cfg = CONFIG.BUILDINGS[this.type];
+    ctx.save();
+    ctx.font         = `${Math.max(14, Math.round(20 * s))}px sans-serif`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.72)';
+    ctx.shadowBlur   = 5 * s;
+    ctx.fillText(cfg.emoji, x, y - 4 * s);
+    ctx.restore();
+  }
+}
+
+function openRadialMenu(col, row) {
+  radialMenu = { col, row };
+}
+
+function drawRadialMenu() {
+  if (!radialMenu) return;
+  const { x, y } = toScreen(radialMenu.col, radialMenu.row);
+  const n = BUILDING_TYPES.length;
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const angle  = -Math.PI + i * (Math.PI / (n - 1));
+    const ix     = x + Math.cos(angle) * RADIAL_R;
+    const iy     = y + Math.sin(angle) * RADIAL_R;
+    const type   = BUILDING_TYPES[i];
+    const cfg    = CONFIG.BUILDINGS[type];
+    const afford = food >= cfg.cost;
+
+    ctx.globalAlpha = afford ? 1 : 0.42;
+
+    ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2);
+    ctx.fillStyle = afford ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
+    ctx.fill();
+    ctx.strokeStyle = afford ? '#c8a050' : '#7a3030';
+    ctx.lineWidth   = 1.8;
+    ctx.stroke();
+
+    ctx.font         = '16px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = '#fff';
+    ctx.fillText(cfg.emoji, ix, iy - 2);
+
+    ctx.font         = 'bold 10px -apple-system, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle    = afford ? '#ffe08f' : '#ff8888';
+    ctx.fillText(cfg.cost, ix, iy + RADIAL_IR + 13);
+
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function radialHit(sx, sy) {
+  if (!radialMenu) return null;
+  const { x, y } = toScreen(radialMenu.col, radialMenu.row);
+  const n = BUILDING_TYPES.length;
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI + i * (Math.PI / (n - 1));
+    const ix    = x + Math.cos(angle) * RADIAL_R;
+    const iy    = y + Math.sin(angle) * RADIAL_R;
+    if (Math.hypot(sx - ix, sy - iy) <= RADIAL_IR) return BUILDING_TYPES[i];
+  }
+  return null;
+}
+
+function placeBuilding(type) {
+  const { col, row } = radialMenu;
+  const cfg = CONFIG.BUILDINGS[type];
+  food -= cfg.cost;
+  buildings.push(new Building(type, col, row));
+  const w = worldFromGrid(col, row);
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0 });
+  radialMenu = null;
+}
+
+function drawBuildPulses(dts) {
+  for (let i = buildPulses.length - 1; i >= 0; i--) {
+    const p = buildPulses[i];
+    p.life -= 0.038 * dts;
+    if (p.life <= 0) { buildPulses.splice(i, 1); continue; }
+    const s = screenFromWorld(p.wx, p.wy);
+    const r = (1 - p.life) * 40 * camera.scale;
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.75;
+    ctx.strokeStyle = '#7fff5a';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, r), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // ===== PARTICLES (TAŞINDI — havuzlandı) =====
@@ -1124,6 +1286,9 @@ function startGame() {
   foods.length = 0;
   particles.length = 0;
   speedTimer = 0; shieldTimer = 0;
+  buildings.length = 0;
+  radialMenu = null;
+  buildPulses.length = 0;
 
   // Başlangıç kolonisi
   for (let i = 0; i < CONFIG.ANT.START_WORKERS;  i++) spawnAnt('worker');
@@ -1198,25 +1363,33 @@ function loop(ts) {
     // Update ants (logic) before depth-sorted draw
     for (const a of ants) if (a.active) a.update(dts);
 
-    // Layers 5-7: depth-sorted food + ants (painter's algorithm by world Y)
+    // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
     drawables.length = 0;
-    for (const f of foods)      drawables.push({ wy: f.wy, draw: () => drawFood(f) });
+    for (const f of foods) drawables.push({ wy: f.wy, draw: () => drawFood(f) });
+    for (const b of buildings) {
+      const bwy = worldFromGrid(b.gridX, b.gridY).y;
+      drawables.push({ wy: bwy, draw: () => b.draw() });
+    }
     for (const a of ants) if (a.active) drawables.push({ wy: a.wy, draw: () => a.draw() });
     drawables.sort((p, q) => p.wy - q.wy);
     for (const d of drawables) d.draw();
 
-    // Layer 8: Particles
+    // Layer 8: Particles + build pulses
     drawParticles(dts);
+    drawBuildPulses(dts);
 
     // Layer 9: HUD
     hudFood = food; hudPop = antCount();
     drawHUD();
 
-    // FAZ 1 yardım metni
+    // Layer 10: Radyal menü (her şeyin üstünde)
+    drawRadialMenu();
+
+    // Yardım metni
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Karıncalar yem topluyor  ·  Sürükle pan · Pinch/Tekerlek zoom · ESC game over · R ortala', W / 2, H - 90);
+    ctx.fillText("Tile'a tıkla → bina kur  ·  Sürükle · Pinch/Tekerlek zoom · ESC · R ortala", W / 2, H - 88);
   } else if (state === 'GAMEOVER') {
     // Draw grid as static backdrop
     const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
