@@ -19,12 +19,47 @@ const CONFIG = {
   TILE:      { W: 64, H: 32 },
   GRID:      { COLS: 15, ROWS: 15 },
   CAMERA:    { MIN_ZOOM: 0.35, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
-  ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2 },
+  ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2, MAX: 80,
+               CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7 },
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
   WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
   POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 }
 };
+
+// ===== AUDIO (TAŞINDI — değiştirilmedi, sadece blok olarak korundu) =====
+let actx = null, soundOn = true, musicTimer = null, musicGain = null;
+function initAudio() { if (actx) return; try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+function beep(freq, dur, type = "sine", vol = 0.15) {
+  if (!actx || !soundOn) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.start(); o.stop(actx.currentTime + dur);
+}
+const sndFood    = () => beep(660, 0.07, "square", 0.06);
+const sndDeposit = () => { beep(520, 0.09, "sine", 0.1); beep(780, 0.11, "sine", 0.08); };
+const sndBorn    = () => beep(950, 0.14, "triangle", 0.11);
+const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
+const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "square", 0.12); };
+const sndBird    = () => beep(1400, 0.2, "sine", 0.1);
+const melody = [392, 440, 523, 440, 392, 330, 392, 294]; let mi = 0;
+function startMusic() {
+  if (!actx || !soundOn) return; stopMusic();
+  musicGain = actx.createGain(); musicGain.gain.value = 0.04; musicGain.connect(actx.destination);
+  musicTimer = setInterval(() => {
+    if (!soundOn) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = "triangle"; o.frequency.value = melody[mi % melody.length] / 2; mi++;
+    o.connect(g); g.connect(musicGain);
+    g.gain.setValueAtTime(0.0001, actx.currentTime);
+    g.gain.linearRampToValueAtTime(1, actx.currentTime + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.45);
+    o.start(); o.stop(actx.currentTime + 0.5);
+  }, 420);
+}
+function stopMusic() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
 
 // ===== CANVAS =====
 const canvas = document.getElementById('game');
@@ -58,6 +93,7 @@ function rrect(x, y, w, h, r) {
 // state ∈ 'MENU' | 'PLAYING' | 'GAMEOVER'
 let state = 'MENU';
 let lastScore = 0, lastWave = 1, prevBest = 0;
+let food = 0; // collected food resource
 
 // ===== CAMERA =====
 const camera = {
@@ -622,14 +658,372 @@ function sortDrawables() {
   drawables.sort((a, b) => (a.col + a.row + (a.zOfs || 0)) - (b.col + b.row + (b.zOfs || 0)));
 }
 
+// ===== WORLD SPACE (camera-independent iso-pixel coordinates) =====
+// Ants, food and pheromones live in "world" space — the pre-camera iso pixel
+// space. screenFromWorld() applies the camera; toScreen(col,row) is exactly
+// screenFromWorld(worldFromGrid(col,row)), so everything stays consistent.
+const WORLD = {
+  minX: -(CONFIG.GRID.ROWS - 1) * CONFIG.TILE.W / 2,
+  maxX:  (CONFIG.GRID.COLS - 1) * CONFIG.TILE.W / 2,
+  minY:  0,
+  maxY:  (CONFIG.GRID.COLS - 1 + CONFIG.GRID.ROWS - 1) * CONFIG.TILE.H / 2
+};
+
+/** Grid (col,row) → world iso-pixel (tile center) */
+function worldFromGrid(col, row) {
+  return { x: (col - row) * CONFIG.TILE.W / 2, y: (col + row) * CONFIG.TILE.H / 2 };
+}
+/** World iso-pixel → screen pixel (camera-aware) */
+function screenFromWorld(wx, wy) {
+  return { x: wx * camera.scale + camera.x, y: wy * camera.scale + camera.y };
+}
+
+// Nest center in world space (NEST_COL/ROW defined in grid section)
+let nestW = { x: 0, y: 0 };
+const NEST_WORLD_R = CONFIG.TILE.H; // deposit radius (world px)
+
+// Shared power-up timers (used by Ant.speed / shield; wired fully in later phases)
+let speedTimer = 0, shieldTimer = 0;
+
+// ===== PHEROMONE (TAŞINDI — world space'e uyarlandı) =====
+const PH = { cols: 0, rows: 0, grid: null };
+const PCELL = CONFIG.PHEROMONE.CELL;
+
+/** Allocate pheromone grid over world bounds */
+function setupPher() {
+  PH.cols = Math.ceil((WORLD.maxX - WORLD.minX) / PCELL) + 1;
+  PH.rows = Math.ceil((WORLD.maxY - WORLD.minY) / PCELL) + 1;
+  PH.grid = new Float32Array(PH.cols * PH.rows);
+}
+/** World coord → pheromone cell index (-1 if out of bounds) */
+function pIdx(wx, wy) {
+  const cx = Math.floor((wx - WORLD.minX) / PCELL);
+  const cy = Math.floor((wy - WORLD.minY) / PCELL);
+  if (cx < 0 || cy < 0 || cx >= PH.cols || cy >= PH.rows) return -1;
+  return cy * PH.cols + cx;
+}
+/** Deposit pheromone at world coord */
+function addP(wx, wy, a) {
+  const i = pIdx(wx, wy);
+  if (i >= 0) PH.grid[i] = Math.min(PH.grid[i] + a, CONFIG.PHEROMONE.MAX);
+}
+/** Sense strongest pheromone in a forward arc → desired angle (or null) */
+function senseP(ant) {
+  const ah = 20; let b = -1, bd = null;
+  for (let a = -0.6; a <= 0.6; a += 0.3) {
+    const an = ant.angle + a;
+    const i = pIdx(ant.wx + Math.cos(an) * ah, ant.wy + Math.sin(an) * ah);
+    if (i >= 0 && PH.grid[i] > b) { b = PH.grid[i]; bd = an; }
+  }
+  return b > 1 ? bd : null;
+}
+/** Shortest signed angular difference target-current */
+function aDiff(t, c) { let d = t - c; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; }
+
+// ===== FOOD (TAŞINDI — TYPES korundu) =====
+const TYPES = {
+  leaf:  { pts: 1, r: 5, c: "#7cc36b", c2: "#a3e08f", speed: 1.0 },
+  fruit: { pts: 3, r: 7, c: "#e06b5a", c2: "#f5a08f", speed: 0.7 },
+  candy: { pts: 5, r: 6, c: "#e0b85a", c2: "#ffe08f", speed: 0.85 }
+};
+let foods = [];
+
+/** Spawn one food item. If col/row omitted, picks a random non-nest tile. */
+function spawnFood(col, row, type) {
+  if (col === undefined) {
+    let tries = 0;
+    do {
+      col = Math.floor(Math.random() * CONFIG.GRID.COLS);
+      row = Math.floor(Math.random() * CONFIG.GRID.ROWS);
+    } while (grid[row][col].type === 'nest' && ++tries < 30);
+  }
+  if (!type) { const r = Math.random(); type = r < 0.6 ? 'leaf' : r < 0.85 ? 'fruit' : 'candy'; }
+  const w = worldFromGrid(col, row);
+  const jx = (Math.random() - 0.5) * CONFIG.TILE.W * 0.4;
+  const jy = (Math.random() - 0.5) * CONFIG.TILE.H * 0.4;
+  foods.push({ wx: w.x + jx, wy: w.y + jy, type });
+}
+
+// ===== PARTICLES (TAŞINDI — havuzlandı) =====
+const particles = [];
+/** Spawn a burst of particles at world coord */
+function burst(wx, wy, color, n = 8) {
+  for (let i = 0; i < n; i++) {
+    let p = particles.find(q => !q.active);
+    if (!p) { if (particles.length >= CONFIG.POOL.PARTICLES) break; p = {}; particles.push(p); }
+    const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 2.5;
+    p.wx = wx; p.wy = wy; p.vx = Math.cos(a) * s; p.vy = Math.sin(a) * s;
+    p.life = 1; p.c = color; p.active = true;
+  }
+}
+
+// ===== COLONY: Ant =====
+/**
+ * Autonomous ant. type ∈ 'worker'|'soldier'|'carrier'.
+ * task ∈ 'forage'|'return'|'guard'|'idle'.
+ */
+class Ant {
+  constructor() { this.active = false; }
+  /** (Re)initialize a pooled ant */
+  init(type) {
+    this.type = type;
+    this.wx = nestW.x; this.wy = nestW.y;
+    this.angle = Math.random() * Math.PI * 2;
+    this.carrying = null;
+    this.wig = Math.random() * 10;
+    this.active = true;
+    this.baseSpeed = CONFIG.ANT.BASE_SPEED * (type === 'carrier' ? CONFIG.ANT.CARRIER_SPEED : 1);
+    this.task = type === 'soldier' ? 'guard' : 'forage';
+  }
+  /** Effective speed (world px / frame-equiv) */
+  get speed() {
+    let s = this.baseSpeed * (speedTimer > 0 ? CONFIG.ANT.SPEED_BOOST : 1);
+    return this.carrying ? s * TYPES[this.carrying].speed : s;
+  }
+  /** @param {number} dts delta-time scale (1.0 == 60fps frame) */
+  update(dts) {
+    if (this.type === 'soldier') { this.updateGuard(dts); return; }
+    this.updateForage(dts);
+  }
+  /** Worker / Carrier behavior (mevcut forage→return döngüsü) */
+  updateForage(dts) {
+    let target = null;
+    if (this.carrying) {
+      target = { x: nestW.x, y: nestW.y };
+      addP(this.wx, this.wy, CONFIG.PHEROMONE.DEPOSIT * dts);
+    } else {
+      let near = null, nd = CONFIG.ANT.SENSE_RANGE * CONFIG.ANT.SENSE_RANGE;
+      for (const f of foods) {
+        if (this.type === 'carrier' && f.type === 'leaf') continue; // carrier leaf'i yok sayar
+        const d = (f.wx - this.wx) ** 2 + (f.wy - this.wy) ** 2;
+        if (d < nd) { nd = d; near = f; }
+      }
+      if (near) target = { x: near.wx, y: near.wy };
+      else { const dir = senseP(this); if (dir !== null) this.angle += aDiff(dir, this.angle) * 0.15 * dts; }
+    }
+    if (target) {
+      const des = Math.atan2(target.y - this.wy, target.x - this.wx);
+      this.angle += aDiff(des, this.angle) * 0.1 * dts;
+    } else if (senseP(this) === null) {
+      this.angle += (Math.random() - 0.5) * 0.4 * dts;
+    }
+    this.step(dts);
+
+    // Pickup
+    if (!this.carrying) {
+      for (let i = foods.length - 1; i >= 0; i--) {
+        if (this.type === 'carrier' && foods[i].type === 'leaf') continue;
+        const dx = this.wx - foods[i].wx, dy = this.wy - foods[i].wy;
+        if (dx * dx + dy * dy < 120) {
+          this.carrying = foods[i].type; foods.splice(i, 1);
+          this.angle += Math.PI; sndFood(); break;
+        }
+      }
+    } else {
+      // Deposit at nest
+      const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
+      if (dx * dx + dy * dy < NEST_WORLD_R * NEST_WORLD_R) {
+        let pts = TYPES[this.carrying].pts;
+        if (this.type === 'carrier') pts = Math.round(pts * 1.5); // carrier ×1.5
+        burst(this.wx, this.wy, TYPES[this.carrying].c2);
+        this.carrying = null; this.angle += Math.PI;
+        food += pts; sndDeposit();
+        // Yeni worker doğumu (mevcut eşik mantığı)
+        if (food >= antCount() * 4 && antCount() < CONFIG.ANT.MAX) { spawnAnt('worker'); sndBorn(); }
+      }
+    }
+  }
+  /** Soldier patrol around nest (düşman yok → guard; FAZ 2'de saldırı eklenecek) */
+  updateGuard(dts) {
+    const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > CONFIG.ANT.GUARD_RADIUS) {
+      const des = Math.atan2(-dy, -dx);
+      this.angle += aDiff(des, this.angle) * 0.08 * dts;
+    } else {
+      this.angle += (Math.random() - 0.5) * 0.25 * dts;
+    }
+    this.step(dts);
+  }
+  /** Advance position + wall bounce */
+  step(dts) {
+    this.wig += 0.3 * dts;
+    this.wx += Math.cos(this.angle) * this.speed * dts;
+    this.wy += Math.sin(this.angle) * this.speed * dts;
+    if (this.wx < WORLD.minX || this.wx > WORLD.maxX) this.angle = Math.PI - this.angle;
+    if (this.wy < WORLD.minY || this.wy > WORLD.maxY) this.angle = -this.angle;
+    this.wx = Math.max(WORLD.minX, Math.min(WORLD.maxX, this.wx));
+    this.wy = Math.max(WORLD.minY, Math.min(WORLD.maxY, this.wy));
+  }
+  /** Draw at screen position (camera-aware) */
+  draw() {
+    const s = screenFromWorld(this.wx, this.wy);
+    drawAntFull(s.x, s.y, this.angle, this.wig, this.type, this.carrying, camera.scale);
+  }
+}
+
+// Ant pool
+const ants = [];
+/** Spawn (or recycle) an ant of given type */
+function spawnAnt(type) {
+  let a = ants.find(x => !x.active);
+  if (!a) { if (ants.length >= CONFIG.POOL.ANTS) return null; a = new Ant(); ants.push(a); }
+  a.init(type); return a;
+}
+/** Count active ants */
+function antCount() { let n = 0; for (const a of ants) if (a.active) n++; return n; }
+
+// ===== ANT RENDER (mevcut kızıl-turuncu gölgeli stil, tiplere göre) =====
+/**
+ * Full ant render with shadow, body, legs, eyes, cargo.
+ * @param {number} x @param {number} y screen px
+ * @param {number} angle @param {number} wig
+ * @param {string} type @param {?string} carrying @param {number} cam camera scale
+ */
+function drawAntFull(x, y, angle, wig, type, carrying, cam) {
+  const sc = (type === 'soldier' ? CONFIG.ANT.SOLDIER_SCALE : 1) * cam;
+  const body = type === 'soldier' ? '#8b1a1a' : type === 'carrier' ? '#c8a020' : '#e8542a';
+  const dark = type === 'soldier' ? '#5e0f0f' : type === 'carrier' ? '#9a7a10' : '#c23d18';
+
+  // Shadow
+  ctx.save(); ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(x, y + 3.5 * sc, 8 * sc, 4.5 * sc, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle + Math.sin(wig) * 0.15);
+  ctx.scale(sc, sc);
+
+  if (shieldTimer > 0) {
+    ctx.strokeStyle = 'rgba(143,208,255,0.7)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Legs (6) — wiggle
+  ctx.strokeStyle = dark; ctx.lineWidth = 1;
+  const lw = Math.sin(wig) * 1.5;
+  for (const lx of [-2, 1, 4]) {
+    ctx.beginPath();
+    ctx.moveTo(lx, -2); ctx.lineTo(lx - 1, -5 - lw);
+    ctx.moveTo(lx, 2);  ctx.lineTo(lx - 1, 5 + lw);
+    ctx.stroke();
+  }
+
+  // Body
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.ellipse(-6, 0, 4.5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 3.5, 3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.arc(6, 0, 2, 0, Math.PI * 2); ctx.fill();
+
+  // Soldier jaws (2 ek path)
+  if (type === 'soldier') {
+    ctx.strokeStyle = '#3a0808'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(9, -1.5); ctx.lineTo(12.5, -3);
+    ctx.moveTo(9, 1.5); ctx.lineTo(12.5, 3); ctx.stroke();
+  }
+
+  // Antennae
+  ctx.strokeStyle = dark; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(7, -1.2); ctx.lineTo(11, -3.5);
+  ctx.moveTo(7, 1.2); ctx.lineTo(11, 3.5); ctx.stroke();
+
+  // Eyes
+  ctx.fillStyle = '#fff'; ctx.beginPath();
+  ctx.arc(7, -1.4, 1, 0, Math.PI * 2); ctx.arc(7, 1.4, 1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#000'; ctx.beginPath();
+  ctx.arc(7.3, -1.4, 0.5, 0, Math.PI * 2); ctx.arc(7.3, 1.4, 0.5, 0, Math.PI * 2); ctx.fill();
+
+  // Cargo
+  if (carrying) {
+    const t = TYPES[carrying];
+    if (type === 'carrier') {
+      // sırtta küçük kare
+      ctx.fillStyle = t.c;  ctx.fillRect(-8, -3, 5, 6);
+      ctx.fillStyle = t.c2; ctx.fillRect(-7.5, -2.5, 2, 2);
+    } else {
+      ctx.fillStyle = t.c;  ctx.beginPath(); ctx.arc(9, 0, t.r - 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(8.4, -0.6, (t.r - 1) * 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ===== COLONY DRAW HELPERS (pheromone, food, particles) =====
+/** Draw pheromone overlay (world cells → screen rects) + decay */
+function drawPheromone() {
+  if (!PH.grid) return;
+  const cell = PCELL * camera.scale;
+  for (let cy = 0; cy < PH.rows; cy++) {
+    for (let cx = 0; cx < PH.cols; cx++) {
+      const i = cy * PH.cols + cx;
+      const v = PH.grid[i];
+      if (v > 0.5) {
+        const wx = WORLD.minX + cx * PCELL, wy = WORLD.minY + cy * PCELL;
+        const s = screenFromWorld(wx, wy);
+        if (s.x + cell < 0 || s.x > W || s.y + cell < 0 || s.y > H) { PH.grid[i] *= CONFIG.PHEROMONE.DECAY; continue; }
+        ctx.fillStyle = 'rgba(120,200,110,' + Math.min(v / 60, 0.35) + ')';
+        ctx.fillRect(s.x, s.y, cell + 1, cell + 1);
+        PH.grid[i] *= CONFIG.PHEROMONE.DECAY;
+      } else PH.grid[i] = 0;
+    }
+  }
+}
+/** Draw a single food item (used by depth-sorted pass) */
+function drawFood(f) {
+  const s = screenFromWorld(f.wx, f.wy);
+  const t = TYPES[f.type], cam = camera.scale;
+  ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(s.x, s.y + 2 * cam, t.r * cam, t.r * 0.5 * cam, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = t.c;  ctx.beginPath(); ctx.arc(s.x, s.y, t.r * cam, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(s.x - t.r * 0.3 * cam, s.y - t.r * 0.3 * cam, t.r * 0.4 * cam, 0, Math.PI * 2); ctx.fill();
+}
+/** Update + draw particles (world space) */
+function drawParticles(dts) {
+  for (const p of particles) {
+    if (!p.active) continue;
+    p.wx += p.vx * dts; p.wy += p.vy * dts;
+    p.vx *= 0.96; p.vy *= 0.96; p.life -= 0.04 * dts;
+    if (p.life <= 0) { p.active = false; continue; }
+    const s = screenFromWorld(p.wx, p.wy);
+    ctx.globalAlpha = p.life; ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(s.x, s.y, 2.2 * camera.scale, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ===== GAME FLOW =====
 function startGame() {
   state = 'PLAYING';
   camera.scale = CONFIG.CAMERA.START_ZOOM;
   initGrid();
+  nestW = worldFromGrid(NEST_COL, NEST_ROW);
+  setupPher();
   centerCamera();
   hoverCol = -1; hoverRow = -1;
-  hudFood = 0; hudPop = 0; hudWave = 1; hudTime = 60; hudQueenHP = CONFIG.QUEEN.MAX_HP;
+
+  // Audio (kullanıcı etkileşimiyle başlat)
+  initAudio(); if (soundOn) startMusic();
+
+  // Reset colony state
+  food = 0;
+  ants.length = 0;
+  foods.length = 0;
+  particles.length = 0;
+  speedTimer = 0; shieldTimer = 0;
+
+  // Başlangıç kolonisi
+  for (let i = 0; i < CONFIG.ANT.START_WORKERS;  i++) spawnAnt('worker');
+  for (let i = 0; i < CONFIG.ANT.START_SOLDIERS; i++) spawnAnt('soldier');
+  for (let i = 0; i < CONFIG.ANT.START_CARRIERS; i++) spawnAnt('carrier');
+
+  // Başlangıç yemleri
+  for (let i = 0; i < 6; i++) spawnFood();
+
+  hudWave = 1; hudTime = 60; hudQueenHP = CONFIG.QUEEN.MAX_HP;
 }
 
 function endGame(score, wave) {
@@ -661,19 +1055,36 @@ function loop(ts) {
     bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
+    const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
+
     // Layer 1: Zemin tile'ları
     drawGrid();
 
-    // Layer 2-8: boş — Phase 1+ dolduracak (feromon, binalar, karıncalar, düşmanlar, parçacıklar)
+    // Layer 2: Feromon overlay
+    drawPheromone();
+
+    // Update ants (logic) before depth-sorted draw
+    for (const a of ants) if (a.active) a.update(dts);
+
+    // Layers 5-7: depth-sorted food + ants (painter's algorithm by world Y)
+    drawables.length = 0;
+    for (const f of foods)      drawables.push({ wy: f.wy, draw: () => drawFood(f) });
+    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, draw: () => a.draw() });
+    drawables.sort((p, q) => p.wy - q.wy);
+    for (const d of drawables) d.draw();
+
+    // Layer 8: Particles
+    drawParticles(dts);
 
     // Layer 9: HUD
+    hudFood = food; hudPop = antCount();
     drawHUD();
 
-    // FAZ 0 yardım metni
+    // FAZ 1 yardım metni
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Sürükle → pan  ·  Pinch / Tekerlek → zoom  ·  Tile\'a dokun → konsol  ·  ESC → game over  ·  R → ortalama', W / 2, H - 90);
+    ctx.fillText('Karıncalar yem topluyor  ·  Sürükle pan · Pinch/Tekerlek zoom · ESC game over · R ortala', W / 2, H - 90);
   } else if (state === 'GAMEOVER') {
     // Draw grid as static backdrop
     const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
