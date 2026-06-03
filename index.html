@@ -1366,8 +1366,13 @@ function loop(ts) {
     // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
     drawables.length = 0;
     for (const f of foods) drawables.push({ wy: f.wy, draw: () => drawFood(f) });
+    // A building occupies its whole tile, so its depth anchor is the tile's FRONT
+    // edge (half a tile forward), not the center. This keeps any ant wandering ON
+    // the building's own tile behind it — eliminating the front/back flicker —
+    // while ants on the tile genuinely in front (≥ half a tile) still draw over it.
+    const BUILD_FRONT = CONFIG.TILE.H / 2 - 0.001;
     for (const b of buildings) {
-      const bwy = worldFromGrid(b.gridX, b.gridY).y;
+      const bwy = worldFromGrid(b.gridX, b.gridY).y + BUILD_FRONT;
       drawables.push({ wy: bwy, draw: () => b.draw() });
     }
     for (const a of ants) if (a.active) drawables.push({ wy: a.wy, draw: () => a.draw() });
