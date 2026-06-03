@@ -97,6 +97,7 @@ let food = 0;          // collected food resource
 let foodSpawnTimer = 0; // ms accumulator for periodic food spawn
 const FOOD_MIN_MAP   = 6;   // respawn threshold
 const FOOD_SPAWN_MS  = 3000; // periodic interval ms
+const FOOD_MAX_AGE_MS = 20000; // uncollected food expires after 20s
 const ANT_BIRTH_COST = 10;   // food spent per new worker
 
 // ===== CAMERA =====
@@ -734,20 +735,26 @@ const TYPES = {
 };
 let foods = [];
 
-/** Spawn one food item. If col/row omitted, picks a random non-nest tile. */
+/**
+ * Spawn one food item. If col/row omitted, picks a random non-nest tile in
+ * the INTERIOR region (col/row 1..COLS-2) so it's always reachable — never on
+ * the outermost edge ring.
+ */
 function spawnFood(col, row, type) {
   if (col === undefined) {
+    const cLo = 1, cHi = CONFIG.GRID.COLS - 2;
+    const rLo = 1, rHi = CONFIG.GRID.ROWS - 2;
     let tries = 0;
     do {
-      col = Math.floor(Math.random() * CONFIG.GRID.COLS);
-      row = Math.floor(Math.random() * CONFIG.GRID.ROWS);
+      col = cLo + Math.floor(Math.random() * (cHi - cLo + 1));
+      row = rLo + Math.floor(Math.random() * (rHi - rLo + 1));
     } while (grid[row][col].type === 'nest' && ++tries < 30);
   }
   if (!type) { const r = Math.random(); type = r < 0.6 ? 'leaf' : r < 0.85 ? 'fruit' : 'candy'; }
   const w = worldFromGrid(col, row);
   const jx = (Math.random() - 0.5) * CONFIG.TILE.W * 0.4;
   const jy = (Math.random() - 0.5) * CONFIG.TILE.H * 0.4;
-  foods.push({ wx: w.x + jx, wy: w.y + jy, type });
+  foods.push({ wx: w.x + jx, wy: w.y + jy, type, age: 0 });
 }
 
 // ===== PARTICLES (TAŞINDI — havuzlandı) =====
@@ -780,6 +787,7 @@ class Ant {
     this.active = true;
     this.baseSpeed = CONFIG.ANT.BASE_SPEED * (type === 'carrier' ? CONFIG.ANT.CARRIER_SPEED : 1);
     this.task = type === 'soldier' ? 'guard' : 'forage';
+    this.stuck = 0; // frames spent barely moving
   }
   /** Effective speed (world px / frame-equiv) */
   get speed() {
@@ -788,8 +796,19 @@ class Ant {
   }
   /** @param {number} dts delta-time scale (1.0 == 60fps frame) */
   update(dts) {
-    if (this.type === 'soldier') { this.updateGuard(dts); return; }
-    this.updateForage(dts);
+    const px = this.wx, py = this.wy;
+
+    if (this.type === 'soldier') this.updateGuard(dts);
+    else this.updateForage(dts);
+
+    // Stuck detection — barely moved for ~1.5s → kick free with new heading
+    const moved = Math.hypot(this.wx - px, this.wy - py);
+    if (moved < 0.15 * dts) this.stuck += dts; else this.stuck = 0;
+    if (this.stuck > 90) {
+      // Steer toward nest center with wide jitter so it always re-mobilizes
+      this.angle = Math.atan2(nestW.y - this.wy, nestW.x - this.wx) + (Math.random() - 0.5) * 1.4;
+      this.stuck = 0;
+    }
   }
   /** Worker / Carrier behavior (mevcut forage→return döngüsü) */
   updateForage(dts) {
@@ -849,16 +868,38 @@ class Ant {
     }
     this.step(dts);
   }
-  /** Advance position + wall bounce, clamped to grid world bounds */
+  /**
+   * Advance position, then HARD-clamp into the diamond grid area.
+   * Bounds are checked in grid (col,row) space (the real playable diamond),
+   * not the rectangular world bbox. On edge contact the heading is steered
+   * toward the nest center so corners can never lock the ant.
+   */
   step(dts) {
     this.wig += 0.3 * dts;
     this.wx += Math.cos(this.angle) * this.speed * dts;
     this.wy += Math.sin(this.angle) * this.speed * dts;
-    // Reflect velocity component on each axis independently
-    if (this.wx < WORLD.minX) { this.wx = WORLD.minX; this.angle = Math.PI - this.angle; }
-    if (this.wx > WORLD.maxX) { this.wx = WORLD.maxX; this.angle = Math.PI - this.angle; }
-    if (this.wy < WORLD.minY) { this.wy = WORLD.minY; this.angle = -this.angle; }
-    if (this.wy > WORLD.maxY) { this.wy = WORLD.maxY; this.angle = -this.angle; }
+
+    // world → grid (inverse of worldFromGrid)
+    const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
+    let col = this.wx / TW + this.wy / TH;
+    let row = this.wy / TH - this.wx / TW;
+
+    const lo = 0.3;
+    const hiC = CONFIG.GRID.COLS - 1 - 0.3;
+    const hiR = CONFIG.GRID.ROWS - 1 - 0.3;
+    let outside = false;
+    if (col < lo)  { col = lo;  outside = true; }
+    if (col > hiC) { col = hiC; outside = true; }
+    if (row < lo)  { row = lo;  outside = true; }
+    if (row > hiR) { row = hiR; outside = true; }
+
+    if (outside) {
+      // Hard clamp position back inside the diamond
+      const w = worldFromGrid(col, row);
+      this.wx = w.x; this.wy = w.y;
+      // Reflect heading inward — steer toward nest center (+ jitter)
+      this.angle = Math.atan2(nestW.y - this.wy, nestW.x - this.wx) + (Math.random() - 0.5) * 0.6;
+    }
   }
   /** Draw at screen position (camera-aware) */
   draw() {
@@ -1064,6 +1105,11 @@ function loop(ts) {
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
 
     // ── Yem yönetimi ──
+    // 0) Yaşlandır: 20sn'dir toplanmayan yemi kaldır (ulaşılamaz olabilir)
+    for (let i = foods.length - 1; i >= 0; i--) {
+      foods[i].age += dt;
+      if (foods[i].age >= FOOD_MAX_AGE_MS) foods.splice(i, 1);
+    }
     // 1) Minimum yem garantisi
     if (foods.length < FOOD_MIN_MAP) {
       const needed = FOOD_MIN_MAP - foods.length;
