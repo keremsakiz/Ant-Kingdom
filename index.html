@@ -93,7 +93,11 @@ function rrect(x, y, w, h, r) {
 // state ∈ 'MENU' | 'PLAYING' | 'GAMEOVER'
 let state = 'MENU';
 let lastScore = 0, lastWave = 1, prevBest = 0;
-let food = 0; // collected food resource
+let food = 0;          // collected food resource
+let foodSpawnTimer = 0; // ms accumulator for periodic food spawn
+const FOOD_MIN_MAP   = 6;   // respawn threshold
+const FOOD_SPAWN_MS  = 3000; // periodic interval ms
+const ANT_BIRTH_COST = 10;   // food spent per new worker
 
 // ===== CAMERA =====
 const camera = {
@@ -662,11 +666,13 @@ function sortDrawables() {
 // Ants, food and pheromones live in "world" space — the pre-camera iso pixel
 // space. screenFromWorld() applies the camera; toScreen(col,row) is exactly
 // screenFromWorld(worldFromGrid(col,row)), so everything stays consistent.
+// Bounds include a small inward margin so ants stay visually inside the grid.
+const _MARGIN = 8; // world-px margin inside grid edge
 const WORLD = {
-  minX: -(CONFIG.GRID.ROWS - 1) * CONFIG.TILE.W / 2,
-  maxX:  (CONFIG.GRID.COLS - 1) * CONFIG.TILE.W / 2,
-  minY:  0,
-  maxY:  (CONFIG.GRID.COLS - 1 + CONFIG.GRID.ROWS - 1) * CONFIG.TILE.H / 2
+  minX: -(CONFIG.GRID.ROWS - 1) * CONFIG.TILE.W / 2 + _MARGIN,
+  maxX:  (CONFIG.GRID.COLS - 1) * CONFIG.TILE.W / 2 - _MARGIN,
+  minY:  _MARGIN,
+  maxY:  (CONFIG.GRID.COLS - 1 + CONFIG.GRID.ROWS - 1) * CONFIG.TILE.H / 2 - _MARGIN
 };
 
 /** Grid (col,row) → world iso-pixel (tile center) */
@@ -828,8 +834,6 @@ class Ant {
         burst(this.wx, this.wy, TYPES[this.carrying].c2);
         this.carrying = null; this.angle += Math.PI;
         food += pts; sndDeposit();
-        // Yeni worker doğumu (mevcut eşik mantığı)
-        if (food >= antCount() * 4 && antCount() < CONFIG.ANT.MAX) { spawnAnt('worker'); sndBorn(); }
       }
     }
   }
@@ -845,15 +849,16 @@ class Ant {
     }
     this.step(dts);
   }
-  /** Advance position + wall bounce */
+  /** Advance position + wall bounce, clamped to grid world bounds */
   step(dts) {
     this.wig += 0.3 * dts;
     this.wx += Math.cos(this.angle) * this.speed * dts;
     this.wy += Math.sin(this.angle) * this.speed * dts;
-    if (this.wx < WORLD.minX || this.wx > WORLD.maxX) this.angle = Math.PI - this.angle;
-    if (this.wy < WORLD.minY || this.wy > WORLD.maxY) this.angle = -this.angle;
-    this.wx = Math.max(WORLD.minX, Math.min(WORLD.maxX, this.wx));
-    this.wy = Math.max(WORLD.minY, Math.min(WORLD.maxY, this.wy));
+    // Reflect velocity component on each axis independently
+    if (this.wx < WORLD.minX) { this.wx = WORLD.minX; this.angle = Math.PI - this.angle; }
+    if (this.wx > WORLD.maxX) { this.wx = WORLD.maxX; this.angle = Math.PI - this.angle; }
+    if (this.wy < WORLD.minY) { this.wy = WORLD.minY; this.angle = -this.angle; }
+    if (this.wy > WORLD.maxY) { this.wy = WORLD.maxY; this.angle = -this.angle; }
   }
   /** Draw at screen position (camera-aware) */
   draw() {
@@ -1010,6 +1015,7 @@ function startGame() {
 
   // Reset colony state
   food = 0;
+  foodSpawnTimer = 0;
   ants.length = 0;
   foods.length = 0;
   particles.length = 0;
@@ -1056,6 +1062,23 @@ function loop(ts) {
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
+
+    // ── Yem yönetimi ──
+    // 1) Minimum yem garantisi
+    if (foods.length < FOOD_MIN_MAP) {
+      const needed = FOOD_MIN_MAP - foods.length;
+      for (let i = 0; i < needed; i++) spawnFood();
+    }
+    // 2) Periyodik ek yem (her FOOD_SPAWN_MS ms'de bir)
+    foodSpawnTimer += dt;
+    if (foodSpawnTimer >= FOOD_SPAWN_MS) { foodSpawnTimer = 0; spawnFood(); }
+
+    // ── Worker doğumu: her ANT_BIRTH_COST yemde 1 worker ──
+    if (food >= ANT_BIRTH_COST && antCount() < CONFIG.ANT.MAX) {
+      food -= ANT_BIRTH_COST;
+      spawnAnt('worker');
+      sndBorn();
+    }
 
     // Layer 1: Zemin tile'ları
     drawGrid();
