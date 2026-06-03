@@ -18,7 +18,7 @@
 const CONFIG = {
   TILE:      { W: 64, H: 32 },
   GRID:      { COLS: 15, ROWS: 15 },
-  CAMERA:    { MIN_ZOOM: 0.35, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
+  CAMERA:    { MIN_ZOOM: 0.55, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
   ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2, MAX: 80,
                CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7 },
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
@@ -71,6 +71,8 @@ function resize() {
   canvas.width  = W * DPR; canvas.height = H * DPR;
   canvas.style.width  = W + 'px'; canvas.style.height = H + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // Keep diamond edges crisp at all zoom levels (no bilinear blur on paths)
+  ctx.imageSmoothingEnabled = false;
   centerCamera();
 }
 
@@ -176,100 +178,131 @@ function inBounds(col, row) {
 }
 
 // ===== POINTER INPUT (unified mouse + touch) =====
-let pointers  = new Map(); // pointerId → {x,y}
-let dragDist  = 0;        // pixels moved since pointerdown — tap vs drag
+let pointers = new Map(); // pointerId → {x,y}
+let dragDist = 0;         // px moved since pointerdown — distinguishes tap vs drag
 const TAP_MAX = 8;
+
+/** Begin pan tracking from a single pointer position */
+function startPan(x, y) {
+  camera.dragging   = true;
+  camera.dragStartX = x; camera.dragStartY = y;
+  camera.camStartX  = camera.x; camera.camStartY = camera.y;
+  dragDist = 0;
+}
+
+/** Apply zoom keeping world point under screen (mx,my) fixed.
+ *  Formula: worldPt = (screen - camera) / scale  →  camera = screen - worldPt * newScale
+ */
+function applyZoom(mx, my, newScale) {
+  newScale = Math.max(CONFIG.CAMERA.MIN_ZOOM, Math.min(CONFIG.CAMERA.MAX_ZOOM, newScale));
+  // World point currently under (mx,my)
+  const wx = (mx - camera.x) / camera.scale;
+  const wy = (my - camera.y) / camera.scale;
+  camera.scale = newScale;
+  camera.x = mx - wx * newScale;
+  camera.y = my - wy * newScale;
+  clampCamera();
+}
 
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (pointers.size === 1) {
-    dragDist = 0;
-    camera.dragging   = true;
-    camera.dragStartX = e.clientX; camera.dragStartY = e.clientY;
-    camera.camStartX  = camera.x;  camera.camStartY  = camera.y;
+    // Single finger → pan
+    startPan(e.clientX, e.clientY);
+    camera.pinchActive = false;
   }
 
   if (pointers.size === 2) {
-    camera.dragging  = false;
+    // Second finger arrived → switch to pinch, cancel pan
+    camera.dragging    = false;
     camera.pinchActive = true;
     const pts = [...pointers.values()];
-    camera.pinchDist  = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-    camera.pinchScale = camera.scale;
-    camera.pinchMidX  = (pts[0].x + pts[1].x) / 2;
-    camera.pinchMidY  = (pts[0].y + pts[1].y) / 2;
-    camera.pinchCamX  = camera.x;
-    camera.pinchCamY  = camera.y;
+    const mx  = (pts[0].x + pts[1].x) / 2;
+    const my  = (pts[0].y + pts[1].y) / 2;
+    camera.pinchDist   = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    camera.pinchScale  = camera.scale;
+    // World point under initial pinch midpoint — kept fixed during zoom
+    camera.pinchWorldX = (mx - camera.x) / camera.scale;
+    camera.pinchWorldY = (my - camera.y) / camera.scale;
   }
 }, { passive: false });
 
 canvas.addEventListener('pointermove', e => {
   e.preventDefault();
-  const prev = pointers.get(e.pointerId) || { x: e.clientX, y: e.clientY };
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-  if (state === 'PLAYING') {
-    if (pointers.size === 1 && camera.dragging) {
-      const dx = e.clientX - camera.dragStartX;
-      const dy = e.clientY - camera.dragStartY;
-      dragDist = Math.hypot(dx, dy);
-      camera.x = camera.camStartX + dx;
-      camera.y = camera.camStartY + dy;
-      clampCamera();
-    }
+  if (state !== 'PLAYING') return;
 
-    if (pointers.size === 2 && camera.pinchActive) {
-      const pts = [...pointers.values()];
-      const dist  = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-      const ratio = dist / camera.pinchDist;
-      const newScale = Math.max(CONFIG.CAMERA.MIN_ZOOM,
-                        Math.min(CONFIG.CAMERA.MAX_ZOOM, camera.pinchScale * ratio));
-      const midX = (pts[0].x + pts[1].x) / 2;
-      const midY = (pts[0].y + pts[1].y) / 2;
-      const sr = newScale / camera.pinchScale;
-      camera.x = midX - (midX - camera.pinchCamX) * sr;
-      camera.y = midY - (midY - camera.pinchCamY) * sr;
-      camera.scale = newScale;
-      clampCamera();
-    }
+  if (pointers.size >= 2 && camera.pinchActive) {
+    // ── PINCH ZOOM (pan disabled while two fingers down) ──
+    const pts = [...pointers.values()];
+    const mx  = (pts[0].x + pts[1].x) / 2;
+    const my  = (pts[0].y + pts[1].y) / 2;
+    const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    const newScale = Math.max(CONFIG.CAMERA.MIN_ZOOM,
+                      Math.min(CONFIG.CAMERA.MAX_ZOOM,
+                        camera.pinchScale * dist / camera.pinchDist));
+    // Keep initial world point fixed under current finger midpoint
+    camera.scale = newScale;
+    camera.x = mx - camera.pinchWorldX * newScale;
+    camera.y = my - camera.pinchWorldY * newScale;
+    clampCamera();
+    return; // intentionally skip pan path
+  }
 
-    // Hover (mouse only — skip during drag/pinch)
-    if (pointers.size === 1 && dragDist < TAP_MAX) {
-      const g = toGrid(e.clientX, e.clientY);
-      hoverCol = g.col; hoverRow = g.row;
-    }
+  if (pointers.size === 1 && camera.dragging) {
+    // ── PAN (single finger) ──
+    const dx = e.clientX - camera.dragStartX;
+    const dy = e.clientY - camera.dragStartY;
+    dragDist = Math.hypot(dx, dy);
+    camera.x = camera.camStartX + dx;
+    camera.y = camera.camStartY + dy;
+    clampCamera();
+  }
+
+  // Hover highlight (mouse only, not during drag)
+  if (pointers.size === 1 && dragDist < TAP_MAX) {
+    const g = toGrid(e.clientX, e.clientY);
+    hoverCol = g.col; hoverRow = g.row;
   }
 }, { passive: false });
 
 canvas.addEventListener('pointerup', e => {
   e.preventDefault();
   const wasDrag = dragDist > TAP_MAX;
+  const upX = e.clientX, upY = e.clientY;
   pointers.delete(e.pointerId);
 
-  if (pointers.size < 2) camera.pinchActive = false;
+  if (pointers.size === 1 && camera.pinchActive) {
+    // One finger lifted after pinch → re-anchor pan to remaining finger
+    camera.pinchActive = false;
+    camera.dragging    = false; // don't immediately pan; wait for next down
+    // Allow remaining finger to start a fresh pan on next move without a down
+    const rem = [...pointers.values()][0];
+    startPan(rem.x, rem.y);
+  }
+
   if (pointers.size === 0) {
-    camera.dragging = false;
-    if (!wasDrag) handleTap(e.clientX, e.clientY);
+    camera.pinchActive = false;
+    camera.dragging    = false;
+    if (!wasDrag) handleTap(upX, upY);
   }
 }, { passive: false });
 
 canvas.addEventListener('pointercancel', e => {
   pointers.delete(e.pointerId);
-  camera.dragging = false; camera.pinchActive = false;
+  if (pointers.size === 0) { camera.dragging = false; camera.pinchActive = false; }
 });
 
-// Mouse wheel zoom (desktop)
+// ── MOUSE WHEEL ZOOM (desktop) — cursor point stays fixed ──
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   if (state !== 'PLAYING') return;
-  const factor    = e.deltaY > 0 ? 0.9 : 1.1;
-  const newScale  = Math.max(CONFIG.CAMERA.MIN_ZOOM, Math.min(CONFIG.CAMERA.MAX_ZOOM, camera.scale * factor));
-  const ratio     = newScale / camera.scale;
-  camera.x = e.clientX - (e.clientX - camera.x) * ratio;
-  camera.y = e.clientY - (e.clientY - camera.y) * ratio;
-  camera.scale = newScale;
-  clampCamera();
+  const factor   = e.deltaY > 0 ? 0.88 : 1.12;
+  const newScale = camera.scale * factor;
+  applyZoom(e.clientX, e.clientY, newScale);
 }, { passive: false });
 
 // ===== UNIFIED TAP HANDLER =====
@@ -499,6 +532,7 @@ function initGrid() {
 let hoverCol = -1, hoverRow = -1;
 
 function drawGrid() {
+  ctx.imageSmoothingEnabled = false; // stays crisp at any zoom
   const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
   const COLS = CONFIG.GRID.COLS, ROWS = CONFIG.GRID.ROWS;
   const s = camera.scale;
