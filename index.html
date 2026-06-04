@@ -45,10 +45,12 @@ const CONFIG = {
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
+  // isBuildingBreaker:true → düşman yoldaki binayı yıkar (saniyede buildingDmg hasar).
+  // Diğerleri binayı umursamaz, doğrudan yuvaya gider (mevcut davranış korunur).
   ENEMIES: {
     spider:     { hp: 25, speed: 1.6, queenDmg:  5, reward:  8, unlockWave:  1, emoji: '🕷' },
-    ladybug:    { hp: 55, speed: 1.0, queenDmg:  8, reward: 12, unlockWave:  1, emoji: '🐞' },
-    dungbeetle: { hp: 140, speed: 0.6, queenDmg: 15, reward: 25, unlockWave:  5, emoji: '🪲' },
+    ladybug:    { hp: 55, speed: 1.0, queenDmg:  8, reward: 12, unlockWave:  1, emoji: '🐞', isBuildingBreaker: true, buildingDmg:  8 },
+    dungbeetle: { hp: 140, speed: 0.6, queenDmg: 15, reward: 25, unlockWave:  5, emoji: '🪲', isBuildingBreaker: true, buildingDmg: 15 },
     bird:       { hp: 45, speed: 1.4, queenDmg: 12, reward: 20, unlockWave: 10, emoji: '🐦' },
     enemyant:   { hp: 80, speed: 1.1, queenDmg: 10, reward: 18, unlockWave: 20, emoji: '🐜' }
   }
@@ -1117,6 +1119,27 @@ function isBarricadeTile(col, row) {
   return false;
 }
 
+/** (col,row) tam-tile'da HERHANGİ bir bina var mı? Varsa o binayı döndür (yoksa null).
+ * Bina-yıkıcı düşmanlar (ladybug/dungbeetle) önündeki binaya saldırmak için kullanır. */
+function buildingAt(col, row) {
+  for (const b of buildings) {
+    if (b.gridX === col && b.gridY === row) return b;
+  }
+  return null;
+}
+
+/** Düşman binayı yıktı: iadesiz kaldır (oyuncu long-press %75 iadesinden AYRI — ceza). */
+function destroyBuildingByEnemy(b) {
+  const idx = buildings.indexOf(b);
+  if (idx < 0) return;
+  buildings.splice(idx, 1);
+  if (upgradeMenu === b) upgradeMenu = null;
+  const w = worldFromGrid(b.gridX, b.gridY);
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#c81e14', maxR: 46 });
+  burst(w.x, w.y, '#d05050', 12);
+  sndCatch();
+}
+
 class Building {
   constructor(type, col, row) {
     this.type  = type;
@@ -1255,6 +1278,20 @@ class Building {
     // Sprite merkezli pişti → sol-üst köşeyi yarım (ölçekli) sprite kadar kaydır.
     const sz = spr.size * tier.scale;
     ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
+
+    // HP barı: yalnız hasarlıyken (hp < maxHP) — tam canlıyken temiz kalsın.
+    // Düşman HP barıyla aynı stil (yeşil→kırmızı, gradient/shadow yok, performanslı).
+    if (this.hp < this.maxHP) {
+      const frac = Math.max(0, this.hp / this.maxHP);
+      const bw = 26 * s, bh = 4 * s;
+      const bx = x - bw / 2, by = cy - sz / 2 - 8 * s;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      const r = Math.round(220 * (1 - frac) + 40 * frac);
+      const g = Math.round(200 * frac + 40 * (1 - frac));
+      ctx.fillStyle = `rgb(${r},${g},40)`;
+      ctx.fillRect(bx, by, bw * frac, bh);
+    }
   }
 }
 
@@ -1922,6 +1959,11 @@ class Enemy {
     this.active   = true;
     this.slowMul  = 1;                              // moat o frame'deki hız çarpanı (kalıcı değil)
     this._side    = Math.random() < 0.5 ? 1 : -1;   // barikat etrafından sabit yönde dolaşmak için
+    // Bina-yıkıcı alanları (sadece ladybug/dungbeetle'da set, diğerlerinde undefined→false)
+    this.isBuildingBreaker = !!cfg.isBuildingBreaker;
+    this.buildingDmg = cfg.buildingDmg || 0;
+    this._atkAccum = 0;                             // saldırı hasar biriktirici (floatText throttle)
+    this._atkTimer = 0;                             // saldırı efekt zamanlayıcı (dts birimi)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -1948,11 +1990,33 @@ class Enemy {
     const nx = this.wx + Math.cos(this.angle) * this.speed * this.slowMul * dts;
     const ny = this.wy + Math.sin(this.angle) * this.speed * this.slowMul * dts;
 
-    // Barikat: aday tile bir barikatsa hareket etme, açıyı sabit yöne saptır →
-    // birkaç frame'de etrafından dolaşır (bu turda tüm düşmanlar barikatı yıkmaz).
+    // Aday tile (yuvaya doğru bir sonraki konumun grid karesi)
     const ncol = Math.round(nx / TW + ny / TH);
     const nrow = Math.round(ny / TH - nx / TW);
-    if (isBarricadeTile(ncol, nrow)) {
+
+    if (this.isBuildingBreaker) {
+      // BİNA-YIKICI (ladybug/dungbeetle): önündeki tile'da herhangi bir bina varsa
+      // dolaşmaz — durup yıkar. Saniyede buildingDmg hasar (dts/60 == dt/1000 sn).
+      const tgt = buildingAt(ncol, nrow);
+      if (tgt) {
+        const dmg = this.buildingDmg * dts / 60;
+        tgt.hp -= dmg;
+        this._atkAccum += dmg;
+        this._atkTimer += dts;
+        if (this._atkTimer >= 30) { // ~0.5sn'de bir: kırmızı "-X" + küçük kıvılcım
+          const wB = worldFromGrid(tgt.gridX, tgt.gridY);
+          floatTexts.push({ wx: wB.x, wy: wB.y, life: 1.0, text: '-' + Math.max(1, Math.round(this._atkAccum)), color: '#ff5a4a' });
+          burst(wB.x, wB.y, '#ff6a3a', 4);
+          this._atkAccum = 0; this._atkTimer = 0;
+        }
+        if (tgt.hp <= 0) destroyBuildingByEnemy(tgt); // iade YOK; bina gidince yola devam
+        // bina önünde bekle: bu frame ilerleme (wx/wy değişmez)
+      } else {
+        this.wx = nx; this.wy = ny;
+      }
+    } else if (isBarricadeTile(ncol, nrow)) {
+      // Barikat: yıkıcı olmayan düşman hareket etmez, açıyı sabit yöne saptır →
+      // birkaç frame'de etrafından dolaşır (mevcut davranış korunur).
       this.angle += this._side * 0.5 * dts; // eski konumda kal, yana kay
     } else {
       this.wx = nx; this.wy = ny;
