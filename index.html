@@ -24,7 +24,14 @@ const CONFIG = {
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
   WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
-  POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 }
+  POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 },
+  BUILDINGS: {
+    moat:      { cost: 20, hp:  50, emoji: '🌊' },
+    barricade: { cost: 30, hp: 120, emoji: '🪨' },
+    barracks:  { cost: 50, hp:  80, emoji: '⚔️' },
+    tower:     { cost: 80, hp:  60, emoji: '🍄' },
+    alarm:     { cost: 25, hp:  40, emoji: '🔔' }
+  }
 };
 
 // ===== AUDIO (TAŞINDI — değiştirilmedi, sadece blok olarak korundu) =====
@@ -73,7 +80,49 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // Keep diamond edges crisp at all zoom levels (no bilinear blur on paths)
   ctx.imageSmoothingEnabled = false;
+  _bgGradient = null; // arka plan gradient'i ekran boyutuna bağlı → resize'da yenile
   centerCamera();
+}
+
+// ===== ARKA PLAN GRADIENT ÖNBELLEĞİ =====
+// createRadialGradient pahalı; boyut değişmedikçe (sadece resize) yeniden üretme.
+let _bgGradient = null;
+function getBgGradient() {
+  if (!_bgGradient) {
+    _bgGradient = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
+    _bgGradient.addColorStop(0, '#3d2a18');
+    _bgGradient.addColorStop(1, '#1c130a');
+  }
+  return _bgGradient;
+}
+
+// ===== EMOJİ SPRITE ÖNBELLEĞİ =====
+// fillText (özellikle shadowBlur ile) her frame çok pahalı. Her benzersiz
+// (emoji, hedef px) çiftini BİR KEZ küçük bir offscreen canvas'a — gölgesi
+// içine pişirilmiş (baked) olarak — render edip, her frame drawImage ile çiz.
+// Font boyutu tam sayı px'e yuvarlandığından (max 14..~40) ve 5 bina emojisi
+// olduğundan önbellek küçük ve sınırlı kalır; zoom değişince yeni boyut üretilir.
+const _emojiCache = new Map();
+function getEmojiSprite(emoji, fontPx) {
+  const key = emoji + '|' + fontPx;
+  let spr = _emojiCache.get(key);
+  if (spr) return spr;
+  const blur = 5 * (fontPx / 20);            // eski Building.draw'daki shadowBlur ≈ 5*scale
+  const pad  = Math.ceil(fontPx * 0.5 + blur + 4);
+  const size = fontPx + pad * 2;             // CSS px cinsinden kare sprite
+  const c    = document.createElement('canvas');
+  c.width = c.height = Math.ceil(size * DPR);
+  const cx = c.getContext('2d');
+  cx.scale(DPR, DPR);                         // ana ctx gibi DPR'de pişir → keskin
+  cx.font         = `${fontPx}px sans-serif`;
+  cx.textAlign    = 'center';
+  cx.textBaseline = 'middle';
+  cx.shadowColor  = 'rgba(0,0,0,0.72)';
+  cx.shadowBlur   = blur;
+  cx.fillText(emoji, size / 2, size / 2);
+  spr = { canvas: c, size };
+  _emojiCache.set(key, spr);
+  return spr;
 }
 
 // ===== ROUNDRECT POLYFILL =====
@@ -678,13 +727,39 @@ function drawHUD() {
     px += pw + gap;
   }
 
-  // Bottom building bar placeholder
+  // Alt bina paneli
+  const barH = 80;
   ctx.fillStyle = 'rgba(0,0,0,0.52)';
-  ctx.fillRect(0, H - 80, W, 80);
-  ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.textAlign = 'center';
-  ctx.font = '12px -apple-system, sans-serif';
-  ctx.fillText('İnşa paneli — FAZ 3\'te aktif olacak', W / 2, H - 44);
+  ctx.fillRect(0, H - barH, W, barH);
+
+  const btnW = 56, btnH = 58, btnGap = 8;
+  const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
+  let bx = Math.round(W / 2 - totalBtnW / 2);
+  const by = H - barH + 11;
+
+  ctx.save();
+  for (const type of BUILDING_TYPES) {
+    const cfg    = CONFIG.BUILDINGS[type];
+    const afford = food >= cfg.cost;
+    ctx.globalAlpha = afford ? 1 : 0.4;
+    ctx.fillStyle = 'rgba(50,35,15,0.85)';
+    rrect(bx, by, btnW, btnH, 8); ctx.fill();
+    ctx.strokeStyle = afford ? '#c8a050' : '#6a4520';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(cfg.emoji, bx + btnW / 2, by + btnH / 2 - 8);
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = afford ? '#ffe08f' : '#ff8888';
+    ctx.fillText(cfg.cost, bx + btnW / 2, by + btnH - 5);
+    ctx.globalAlpha = 1;
+    bx += btnW + btnGap;
+  }
+  ctx.restore();
 }
 
 // ===== ANT SHAPE (shared utility for menu dekor + future Ant class) =====
@@ -709,10 +784,24 @@ function drawAntShape(x, y, angle, wig, bodyColor, scale) {
 
 // ===== PLAYING TILE TAP =====
 function onPlayingTap(x, y) {
-  const g = toGrid(x, y);
-  if (inBounds(g.col, g.row)) {
-    console.log(`[FAZ 0] Tile dokunuldu: col=${g.col}, row=${g.row}, tip=${grid[g.row][g.col].type}`);
+  // Radyal menü açıksa — önce menüyle etkileş
+  if (radialMenu) {
+    const hit = radialHit(x, y);
+    if (hit && food >= CONFIG.BUILDINGS[hit].cost) {
+      placeBuilding(hit); // içinde radialMenu = null yapar
+    } else if (!hit) {
+      radialMenu = null;  // dışına tıklama → kapat
+    }
+    // yemi yetmiyorsa ikon tıklanamaz, menü açık kalır
+    return;
   }
+
+  // Menü kapalı → tile seç
+  const g = toGrid(x, y);
+  if (!inBounds(g.col, g.row)) return;
+  if (grid[g.row][g.col].type === 'nest') return;
+  if (buildings.some(b => b.gridX === g.col && b.gridY === g.row)) return;
+  openRadialMenu(g.col, g.row);
 }
 
 // ===== DEPTH SORT SCAFFOLD =====
@@ -720,6 +809,11 @@ function onPlayingTap(x, y) {
 // For Phase 0 this is unused — grid tiles are drawn directly.
 // Structure: { col, row, zOfs:0, draw: fn }
 let drawables = [];
+
+// Monotonic id handed to every depth-sorted object (ant/food/building). Used as
+// a STABLE tie-breaker so objects sharing the same world-Y keep a fixed draw
+// order every frame — see the depth sort in loop(). Never reset during a run.
+let _uid = 0;
 
 /** Sort drawables by depth (painter's algorithm) */
 function sortDrawables() {
@@ -817,7 +911,121 @@ function spawnFood(col, row, type) {
   const w = worldFromGrid(col, row);
   const jx = (Math.random() - 0.5) * CONFIG.TILE.W * 0.4;
   const jy = (Math.random() - 0.5) * CONFIG.TILE.H * 0.4;
-  foods.push({ wx: w.x + jx, wy: w.y + jy, type, age: 0 });
+  foods.push({ wx: w.x + jx, wy: w.y + jy, type, age: 0, uid: _uid++ });
+}
+
+// ===== BUILDINGS =====
+const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm'];
+let buildings   = [];
+let radialMenu  = null; // { col, row } — grid hücresi
+let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
+
+const RADIAL_R  = 58; // ikon yayı yarıçapı (screen px)
+const RADIAL_IR = 22; // ikon daire yarıçapı
+
+class Building {
+  constructor(type, col, row) {
+    this.type  = type;
+    this.gridX = col;
+    this.gridY = row;
+    this.maxHP = CONFIG.BUILDINGS[type].hp;
+    this.hp    = this.maxHP;
+    this.level = 1;
+    this.uid   = _uid++;
+  }
+  draw() {
+    const { x, y } = toScreen(this.gridX, this.gridY);
+    const s   = camera.scale;
+    const cfg = CONFIG.BUILDINGS[this.type];
+    // Önceden pişirilmiş (gölge baked) emoji bitmap'i — fillText/shadowBlur yok.
+    const fontPx = Math.max(14, Math.round(20 * s));
+    const spr = getEmojiSprite(cfg.emoji, fontPx);
+    // Eski çizim: align=center, baseline=middle → (x, y-4*s) merkezli. Sprite de
+    // merkezli pişti, o yüzden sol-üst köşeyi yarım sprite kadar kaydır.
+    ctx.drawImage(spr.canvas, x - spr.size / 2, (y - 4 * s) - spr.size / 2, spr.size, spr.size);
+  }
+}
+
+function openRadialMenu(col, row) {
+  radialMenu = { col, row };
+}
+
+function drawRadialMenu() {
+  if (!radialMenu) return;
+  const { x, y } = toScreen(radialMenu.col, radialMenu.row);
+  const n = BUILDING_TYPES.length;
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const angle  = -Math.PI + i * (Math.PI / (n - 1));
+    const ix     = x + Math.cos(angle) * RADIAL_R;
+    const iy     = y + Math.sin(angle) * RADIAL_R;
+    const type   = BUILDING_TYPES[i];
+    const cfg    = CONFIG.BUILDINGS[type];
+    const afford = food >= cfg.cost;
+
+    ctx.globalAlpha = afford ? 1 : 0.42;
+
+    ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2);
+    ctx.fillStyle = afford ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
+    ctx.fill();
+    ctx.strokeStyle = afford ? '#c8a050' : '#7a3030';
+    ctx.lineWidth   = 1.8;
+    ctx.stroke();
+
+    ctx.font         = '16px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = '#fff';
+    ctx.fillText(cfg.emoji, ix, iy - 2);
+
+    ctx.font         = 'bold 10px -apple-system, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle    = afford ? '#ffe08f' : '#ff8888';
+    ctx.fillText(cfg.cost, ix, iy + RADIAL_IR + 13);
+
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function radialHit(sx, sy) {
+  if (!radialMenu) return null;
+  const { x, y } = toScreen(radialMenu.col, radialMenu.row);
+  const n = BUILDING_TYPES.length;
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI + i * (Math.PI / (n - 1));
+    const ix    = x + Math.cos(angle) * RADIAL_R;
+    const iy    = y + Math.sin(angle) * RADIAL_R;
+    if (Math.hypot(sx - ix, sy - iy) <= RADIAL_IR) return BUILDING_TYPES[i];
+  }
+  return null;
+}
+
+function placeBuilding(type) {
+  const { col, row } = radialMenu;
+  const cfg = CONFIG.BUILDINGS[type];
+  food -= cfg.cost;
+  buildings.push(new Building(type, col, row));
+  const w = worldFromGrid(col, row);
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0 });
+  radialMenu = null;
+}
+
+function drawBuildPulses(dts) {
+  for (let i = buildPulses.length - 1; i >= 0; i--) {
+    const p = buildPulses[i];
+    p.life -= 0.038 * dts;
+    if (p.life <= 0) { buildPulses.splice(i, 1); continue; }
+    const s = screenFromWorld(p.wx, p.wy);
+    const r = (1 - p.life) * 40 * camera.scale;
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.75;
+    ctx.strokeStyle = '#7fff5a';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, r), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // ===== PARTICLES (TAŞINDI — havuzlandı) =====
@@ -839,7 +1047,7 @@ function burst(wx, wy, color, n = 8) {
  * task ∈ 'forage'|'return'|'guard'|'idle'.
  */
 class Ant {
-  constructor() { this.active = false; }
+  constructor() { this.active = false; this.uid = _uid++; }
   /** (Re)initialize a pooled ant */
   init(type) {
     this.type = type;
@@ -994,10 +1202,10 @@ function drawAntFull(x, y, angle, wig, type, carrying, cam) {
   const body = type === 'soldier' ? '#8b1a1a' : type === 'carrier' ? '#c8a020' : '#e8542a';
   const dark = type === 'soldier' ? '#5e0f0f' : type === 'carrier' ? '#9a7a10' : '#c23d18';
 
-  // Shadow
-  ctx.save(); ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
+  // Shadow — save/restore yerine alpha'yı elle ayarla/sıfırla (daha az state cost)
+  ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(x, y + 3.5 * sc, 8 * sc, 4.5 * sc, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  ctx.globalAlpha = 1;
 
   ctx.save();
   ctx.translate(x, y);
@@ -1084,9 +1292,9 @@ function drawPheromone() {
 function drawFood(f) {
   const s = screenFromWorld(f.wx, f.wy);
   const t = TYPES[f.type], cam = camera.scale;
-  ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
+  ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(s.x, s.y + 2 * cam, t.r * cam, t.r * 0.5 * cam, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = t.c;  ctx.beginPath(); ctx.arc(s.x, s.y, t.r * cam, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(s.x - t.r * 0.3 * cam, s.y - t.r * 0.3 * cam, t.r * 0.4 * cam, 0, Math.PI * 2); ctx.fill();
 }
@@ -1124,6 +1332,9 @@ function startGame() {
   foods.length = 0;
   particles.length = 0;
   speedTimer = 0; shieldTimer = 0;
+  buildings.length = 0;
+  radialMenu = null;
+  buildPulses.length = 0;
 
   // Başlangıç kolonisi
   for (let i = 0; i < CONFIG.ANT.START_WORKERS;  i++) spawnAnt('worker');
@@ -1160,10 +1371,8 @@ function loop(ts) {
     updateMenu(dt);
     drawMenu();
   } else if (state === 'PLAYING') {
-    // Background gradient
-    const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
-    bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // Background gradient (önbellekten — her frame yeniden yaratılmıyor)
+    ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
 
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
 
@@ -1198,30 +1407,47 @@ function loop(ts) {
     // Update ants (logic) before depth-sorted draw
     for (const a of ants) if (a.active) a.update(dts);
 
-    // Layers 5-7: depth-sorted food + ants (painter's algorithm by world Y)
+    // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
+    // ONE consistent depth anchor for every object: its world-Y center (wy). Food
+    // and ants already live at their wy; a building's anchor is its tile center
+    // worldFromGrid(...).y — the SAME formula, no special-casing. Mixing anchors
+    // (e.g. an extra half-tile bias on buildings only) makes objects collide with
+    // a neighbouring diagonal's depths and flip order frame-to-frame → flicker.
+    // Her frame yeni closure (() => ...) yaratmak yerine, tip etiketi (t) + nesne
+    // referansı (o) sakla → çizimde dispatch et. Bu, frame başına 3×N kapama
+    // tahsisini kaldırır (GC baskısını ciddi azaltır). Sıralama mantığı AYNI.
     drawables.length = 0;
-    for (const f of foods)      drawables.push({ wy: f.wy, draw: () => drawFood(f) });
-    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, draw: () => a.draw() });
-    drawables.sort((p, q) => p.wy - q.wy);
-    for (const d of drawables) d.draw();
+    for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, t: 0, o: f });
+    for (const b of buildings) {
+      const bwy = worldFromGrid(b.gridX, b.gridY).y;
+      drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
+    }
+    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, t: 1, o: a });
+    // STABLE order: break wy ties by the object's permanent uid, so equal-depth
+    // objects keep a fixed relative order every frame regardless of push order or
+    // engine sort stability. No tie ever resolves by chance → no flicker.
+    drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
+    for (const d of drawables) { if (d.t === 0) drawFood(d.o); else d.o.draw(); }
 
-    // Layer 8: Particles
+    // Layer 8: Particles + build pulses
     drawParticles(dts);
+    drawBuildPulses(dts);
 
     // Layer 9: HUD
     hudFood = food; hudPop = antCount();
     drawHUD();
 
-    // FAZ 1 yardım metni
+    // Layer 10: Radyal menü (her şeyin üstünde)
+    drawRadialMenu();
+
+    // Yardım metni
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Karıncalar yem topluyor  ·  Sürükle pan · Pinch/Tekerlek zoom · ESC game over · R ortala', W / 2, H - 90);
+    ctx.fillText("Tile'a tıkla → bina kur  ·  Sürükle · Pinch/Tekerlek zoom · ESC · R ortala", W / 2, H - 88);
   } else if (state === 'GAMEOVER') {
-    // Draw grid as static backdrop
-    const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
-    bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // Draw grid as static backdrop (gradient önbellekten)
+    ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
     drawGrid();
     drawGameover();
   }
