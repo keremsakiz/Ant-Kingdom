@@ -27,16 +27,18 @@ const CONFIG = {
   QUEEN:     { MAX_HP: 100 },
   POOL:      { ANTS: 200, ENEMIES: 150, PARTICLES: 400 },
   // Faz 3B: her binanın etki parametreleri CONFIG'de (magic number yok).
-  //  moat.slowFactor     — tile üstündeki düşmanın o frame'deki hız çarpanı
+  //  moat.slowByLevel    — sv1/2/3 için tile üstündeki düşmanın hız çarpanı (0.4→0.3→0.2)
   //  barracks.spawnInterval — ms; bu sürede bir soldier üretir
   //  tower.range/cooldown/poisonDmg — AOE zehir menzili(world px)/periyot(ms)/hasar
   //  alarm (ŞİFA TAŞI) — healRange(yuvaya yakınlık, world px)/healInterval(ms)/healAmount(HP)
+  // Faz 3C: her bina için Türkçe "name" + 3 seviyeli upgrade (bkz. LVL_MUL).
+  // Etki/HP değerleri seviye çarpanıyla ölçeklenir; moat slow'u seviye dizisinden.
   BUILDINGS: {
-    moat:      { cost: 60, hp:  50, emoji: '🌊', slowFactor: 0.4 },
-    barricade: { cost: 90, hp: 120, emoji: '🪨' },
-    barracks:  { cost: 150, hp:  80, emoji: '⚔️', spawnInterval: 15000 },
-    tower:     { cost: 240, hp:  60, emoji: '🍄', range: 150, cooldown: 2000, poisonDmg: 28 },
-    alarm:     { cost: 75, hp:  40, emoji: '💚', healRange: 130, healInterval: 15000, healAmount: 5 }
+    moat:      { cost: 60, hp:  50, emoji: '🌊', name: 'Hendek',      slowByLevel: [0.4, 0.3, 0.2] },
+    barricade: { cost: 90, hp: 120, emoji: '🪨', name: 'Barikat' },
+    barracks:  { cost: 150, hp:  80, emoji: '⚔️', name: 'Kışla',       spawnInterval: 15000 },
+    tower:     { cost: 240, hp:  60, emoji: '🍄', name: 'Zehir Kulesi', range: 150, cooldown: 2000, poisonDmg: 28 },
+    alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
@@ -265,6 +267,27 @@ let pointers = new Map(); // pointerId → {x,y}
 let dragDist = 0;         // px moved since pointerdown — distinguishes tap vs drag
 const TAP_MAX = 8;
 
+// Faz 3C: dolu tile'da long-press → bina yık (%75 iade). ~500ms aynı yerde durunca
+// tetiklenir; hareket/ikinci parmak/up iptal eder. Tetiklenirse o up normal tap sayılmaz.
+let lpTimer = null, lpFired = false;
+const LONG_PRESS_MS = 500;
+function startLongPress(x, y) {
+  cancelLongPress();
+  lpFired = false;
+  if (state !== 'PLAYING' || radialMenu) return; // boş-tile kurma menüsündeyken yıkma yok
+  const g = toGrid(x, y);
+  if (!inBounds(g.col, g.row)) return;
+  const b = buildings.find(bb => bb.gridX === g.col && bb.gridY === g.row);
+  if (!b) return;
+  lpTimer = setTimeout(() => {
+    lpTimer = null;
+    if (dragDist <= TAP_MAX) { demolishBuilding(b); lpFired = true; }
+  }, LONG_PRESS_MS);
+}
+function cancelLongPress() {
+  if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+}
+
 /** Begin pan tracking from a single pointer position */
 function startPan(x, y) {
   camera.dragging   = true;
@@ -295,10 +318,12 @@ canvas.addEventListener('pointerdown', e => {
     // Single finger → pan
     startPan(e.clientX, e.clientY);
     camera.pinchActive = false;
+    startLongPress(e.clientX, e.clientY); // dolu tile'da yıkım sayacı
   }
 
   if (pointers.size === 2) {
     // Second finger arrived → switch to pinch, cancel pan
+    cancelLongPress();
     camera.dragging    = false;
     camera.pinchActive = true;
     const pts = [...pointers.values()];
@@ -342,6 +367,7 @@ canvas.addEventListener('pointermove', e => {
     const dx = e.clientX - camera.dragStartX;
     const dy = e.clientY - camera.dragStartY;
     dragDist = Math.hypot(dx, dy);
+    if (dragDist > TAP_MAX) cancelLongPress(); // sürükleme → yıkım iptal
     camera.x = camera.camStartX + dx;
     camera.y = camera.camStartY + dy;
     clampCamera();
@@ -358,6 +384,7 @@ canvas.addEventListener('pointerup', e => {
   e.preventDefault();
   const wasDrag = dragDist > TAP_MAX;
   const upX = e.clientX, upY = e.clientY;
+  cancelLongPress(); // parmak kalktı → bekleyen yıkım sayacını durdur
   pointers.delete(e.pointerId);
 
   if (pointers.size === 1 && camera.pinchActive) {
@@ -372,11 +399,13 @@ canvas.addEventListener('pointerup', e => {
     if (camera.pinchActive) clampCamera(); // pinch ended (both fingers up)
     camera.pinchActive = false;
     camera.dragging    = false;
-    if (!wasDrag) handleTap(upX, upY);
+    if (!wasDrag && !lpFired) handleTap(upX, upY); // long-press yıktıysa tap sayma
+    lpFired = false;
   }
 }, { passive: false });
 
 canvas.addEventListener('pointercancel', e => {
+  cancelLongPress();
   pointers.delete(e.pointerId);
   if (pointers.size === 0) { camera.dragging = false; camera.pinchActive = false; }
 });
@@ -738,6 +767,16 @@ function drawNestEntrance(x, y, hw, hh, s) {
 // Placeholder values — will be wired to real state in Phase 1+
 let hudFood = 0, hudPop = 0, hudWave = 1, hudTime = 60, hudQueenHP = CONFIG.QUEEN.MAX_HP;
 
+/** Metni mevcut ctx.font ile maxW'ye sığdır: taşarsa ilk kelimeye, gerekirse …'e düşür. */
+function fitText(str, maxW) {
+  if (ctx.measureText(str).width <= maxW) return str;
+  const first = str.split(' ')[0];
+  if (ctx.measureText(first).width <= maxW) return first;
+  let s = first;
+  while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+  return s + '…';
+}
+
 function drawHUD() {
   const pad = 8, ph = 34, gap = 5;
   const pills = [
@@ -772,6 +811,7 @@ function drawHUD() {
   const by = H - barH + 11;
 
   ctx.save();
+  ctx.textAlign = 'center';
   for (const type of BUILDING_TYPES) {
     const cfg    = CONFIG.BUILDINGS[type];
     const afford = food >= cfg.cost;
@@ -781,15 +821,21 @@ function drawHUD() {
     ctx.strokeStyle = afford ? '#c8a050' : '#6a4520';
     ctx.lineWidth = 1.2;
     ctx.stroke();
-    ctx.font = '20px sans-serif';
-    ctx.textAlign = 'center';
+    const cx = bx + btnW / 2;
+    // Emoji üstte
+    ctx.font = '19px sans-serif';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
-    ctx.fillText(cfg.emoji, bx + btnW / 2, by + btnH / 2 - 8);
-    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.fillText(cfg.emoji, cx, by + 15);
+    // İsim ortada — butona sığmazsa kısalt (56px dar)
+    ctx.font = 'bold 9px -apple-system, sans-serif';
+    ctx.fillStyle = afford ? '#ffe8b0' : '#caa080';
+    ctx.fillText(fitText(cfg.name, btnW - 6), cx, by + 33);
+    // Fiyat altta
+    ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = afford ? '#ffe08f' : '#ff8888';
-    ctx.fillText(cfg.cost, bx + btnW / 2, by + btnH - 5);
+    ctx.fillText(cfg.cost, cx, by + btnH - 6);
     ctx.globalAlpha = 1;
     bx += btnW + btnGap;
   }
@@ -818,7 +864,7 @@ function drawAntShape(x, y, angle, wig, bodyColor, scale) {
 
 // ===== PLAYING TILE TAP =====
 function onPlayingTap(x, y) {
-  // Radyal menü açıksa — önce menüyle etkileş
+  // Radyal menü (boş tile kurma) açıksa — önce menüyle etkileş
   if (radialMenu) {
     const hit = radialHit(x, y);
     if (hit && food >= CONFIG.BUILDINGS[hit].cost) {
@@ -830,12 +876,20 @@ function onPlayingTap(x, y) {
     return;
   }
 
+  // Upgrade balonu (dolu tile) açıksa — Yükselt'e mi, dışına mı?
+  if (upgradeMenu) {
+    if (upgradeBtnHit(x, y)) doUpgrade(upgradeMenu); // menü açık kalır, yeni sv'yi gösterir
+    else                     upgradeMenu = null;      // dışına tıklama → kapat
+    return;
+  }
+
   // Menü kapalı → tile seç
   const g = toGrid(x, y);
   if (!inBounds(g.col, g.row)) return;
   if (grid[g.row][g.col].type === 'nest') return;
-  if (buildings.some(b => b.gridX === g.col && b.gridY === g.row)) return;
-  openRadialMenu(g.col, g.row);
+  const b = buildings.find(bb => bb.gridX === g.col && bb.gridY === g.row);
+  if (b) { openUpgradeMenu(b); return; } // DOLU tile → upgrade balonu
+  openRadialMenu(g.col, g.row);          // BOŞ tile → kurma menüsü
 }
 
 // ===== DEPTH SORT SCAFFOLD =====
@@ -951,8 +1005,29 @@ function spawnFood(col, row, type) {
 // ===== BUILDINGS =====
 const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm'];
 let buildings   = [];
-let radialMenu  = null; // { col, row } — grid hücresi
+let radialMenu  = null; // { col, row } — boş tile'a kurma menüsü
+let upgradeMenu = null; // Building referansı — dolu tile'a upgrade balonu
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
+
+// Faz 3C: seviye çarpanları. Index = level-1. Hem etki hem maxHP için kullanılır.
+//   sv1 ×1.0, sv2 ×1.4, sv3 ×1.9  (tower hasarı/healer şifası artar, barracks
+//   intervali / çarpan → daha sık, maxHP × çarpan).
+const LVL_MUL = [1.0, 1.4, 1.9];
+
+/** type binasının toLevel seviyesine yükseltme maliyeti (sv2 = ×1.5, sv3 = ×2.5). */
+function upgradeCostFor(type, toLevel) {
+  const base = CONFIG.BUILDINGS[type].cost;
+  if (toLevel === 2) return Math.round(base * 1.5);
+  if (toLevel === 3) return Math.round(base * 2.5);
+  return 0;
+}
+
+/** Binaya bugüne dek yatırılan toplam yem (temel cost + ulaşılan seviye upgrade'leri). */
+function investedTotal(b) {
+  let total = CONFIG.BUILDINGS[b.type].cost;
+  for (let lv = 2; lv <= b.level; lv++) total += upgradeCostFor(b.type, lv);
+  return total;
+}
 
 const RADIAL_R  = 80; // ikon yayı yarıçapı (screen px) — komşu daireler arası net boşluk
 const RADIAL_IR = 20; // ikon daire yarıçapı
@@ -968,9 +1043,26 @@ function moatSlowAt(wx, wy) {
   for (const b of buildings) {
     if (b.type !== 'moat') continue;
     if (Math.abs(col - b.gridX) <= 0.6 && Math.abs(row - b.gridY) <= 0.6)
-      return CONFIG.BUILDINGS.moat.slowFactor;
+      return CONFIG.BUILDINGS.moat.slowByLevel[b.level - 1]; // sv yükseldikçe 0.4→0.3→0.2
   }
   return 1;
+}
+
+/**
+ * Healer (alarm) sınırı: yuva menzilindeki healer'lardan yalnız EN FAZLA 2'si
+ * (en eski kurulan, uid sıralı) kraliçeyi iyileştirebilir. Fazlası boşa gider.
+ * Timer başına (15sn) ~bir kez çağrılır → her-frame maliyeti yok.
+ */
+function alarmCanHeal(b) {
+  const r2 = CONFIG.BUILDINGS.alarm.healRange ** 2;
+  const inRange = [];
+  for (const o of buildings) {
+    if (o.type !== 'alarm') continue;
+    const w = worldFromGrid(o.gridX, o.gridY);
+    if ((w.x - nestW.x) ** 2 + (w.y - nestW.y) ** 2 <= r2) inRange.push(o);
+  }
+  inRange.sort((a, c) => a.uid - c.uid);
+  return inRange.indexOf(b) < 2;
 }
 
 /** (col,row) tam-tile koordinatı bir barikatla dolu mu? */
@@ -986,15 +1078,22 @@ class Building {
     this.type  = type;
     this.gridX = col;
     this.gridY = row;
-    this.maxHP = CONFIG.BUILDINGS[type].hp;
-    this.hp    = this.maxHP;
     this.level = 1;
     this.uid   = _uid++;
+    this.applyLevel(); // maxHP'yi seviyeye göre hesapla + hp=maxHP
     // Faz 3B etki zamanlayıcıları (ms) — kullanılmayan binada da zararsız durur.
     this.spawnTimer = 0; // barracks
     this.cdTimer    = 0; // tower
     this.healTimer  = 0; // alarm (şifa taşı) periyodik iyileştirme
   }
+  /** Seviyeye göre maxHP'yi yeniden hesapla ve canı doldur (kurulunca/yükselince). */
+  applyLevel() {
+    const mul = LVL_MUL[this.level - 1] || 1.0;
+    this.maxHP = Math.round(CONFIG.BUILDINGS[this.type].hp * mul);
+    this.hp    = this.maxHP;
+  }
+  /** Bu seviyenin etki çarpanı (tower hasarı, healer şifası, barracks hızı, moat seçimi). */
+  effectMul() { return LVL_MUL[this.level - 1] || 1.0; }
   /**
    * Bina etkisi (Faz 3B). dt = ms (loop'taki ham delta). Tüm etkiler periyot
    * bazlı (ms) olduğundan dts değil dt alır. Moat/barikat etkileri düşman
@@ -1003,10 +1102,11 @@ class Building {
   update(dt) {
     const cfg = CONFIG.BUILDINGS[this.type];
 
+    const eff = this.effectMul();
     if (this.type === 'barracks') {
-      // Periyodik soldier üretimi (MAX karınca sınırına saygılı)
+      // Periyodik soldier üretimi (MAX karınca sınırına saygılı). Seviye → daha sık.
       this.spawnTimer += dt;
-      if (this.spawnTimer >= cfg.spawnInterval) {
+      if (this.spawnTimer >= cfg.spawnInterval / eff) {
         this.spawnTimer = 0;
         if (antCount() < CONFIG.ANT.MAX) {
           const a = spawnAnt('soldier');
@@ -1029,7 +1129,7 @@ class Building {
         for (const e of enemies) {
           if (!e.active) continue;
           if ((e.wx - w.x) ** 2 + (e.wy - w.y) ** 2 > r2) continue;
-          e.hp -= cfg.poisonDmg;
+          e.hp -= cfg.poisonDmg * eff; // seviye → daha fazla zehir
           burst(e.wx, e.wy, '#7fff3a', 5);
           hit = true;
           if (e.hp <= 0) killEnemy(e);
@@ -1041,13 +1141,17 @@ class Building {
       // ŞİFA TAŞI: yuvaya healRange içindeyse periyodik olarak kraliçe HP'sini
       // healAmount kadar iyileştirir (MAX_HP'yi aşmadan). Yuvadan uzaktaysa etkisiz
       // → oyuncu stratejik olarak yuvaya yakın kurmak zorunda. (Bina onarımı Faz 2B.)
+      // DENGE (Faz 3C): healer sv1 zayıf (+3) ve yuva menzilindeki healer'lardan
+      // EN FAZLA 2 tanesi kraliçeyi iyileştirir (alarmCanHeal). Böylece nice healer
+      // dizmek ölümsüzlük getirmez; upgrade (sv3 ≈ +6) şart.
       this.healTimer += dt;
       if (this.healTimer >= cfg.healInterval) {
         this.healTimer = 0;
         const w = worldFromGrid(this.gridX, this.gridY);
         const inRange = (w.x - nestW.x) ** 2 + (w.y - nestW.y) ** 2 <= cfg.healRange * cfg.healRange;
-        if (inRange && hudQueenHP < CONFIG.QUEEN.MAX_HP) {
-          hudQueenHP = Math.min(CONFIG.QUEEN.MAX_HP, hudQueenHP + cfg.healAmount);
+        if (inRange && hudQueenHP < CONFIG.QUEEN.MAX_HP && alarmCanHeal(this)) {
+          const heal = Math.round(cfg.healAmount * eff); // sv1 +3, sv2 +4, sv3 +6
+          hudQueenHP = Math.min(CONFIG.QUEEN.MAX_HP, hudQueenHP + heal);
           buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#5aff8a', maxR: 50 }); // yuvada şifa halkası
           burst(w.x, w.y, '#5aff8a', 6); // bina konumunda yeşil parçacık
         }
@@ -1068,7 +1172,104 @@ class Building {
 }
 
 function openRadialMenu(col, row) {
+  upgradeMenu = null;        // iki menü aynı anda açık olmaz
   radialMenu = { col, row };
+}
+
+// ===== UPGRADE BALONU (dolu tile'a tap) =====
+function openUpgradeMenu(b) {
+  radialMenu  = null;        // iki menü aynı anda açık olmaz
+  upgradeMenu = b;
+}
+
+/** Balon yerleşimi (kamera-aware): bina ekran konumundan panel + buton dikdörtgeni. */
+function upgradeMenuLayout(b) {
+  const sc = toScreen(b.gridX, b.gridY);
+  const w = 156, h = 96;
+  let bx = sc.x - w / 2;
+  let by = sc.y - 64 - h;        // binanın üstünde
+  bx = Math.max(6, Math.min(W - w - 6, bx));
+  by = Math.max(6, by);
+  const btn = { x: bx + 12, y: by + h - 32, w: w - 24, h: 26 };
+  return { bx, by, w, h, btn };
+}
+
+function drawUpgradeMenu() {
+  if (!upgradeMenu) return;
+  const b   = upgradeMenu;
+  const cfg = CONFIG.BUILDINGS[b.type];
+  const L   = upgradeMenuLayout(b);
+  ctx.save();
+  // Panel
+  ctx.fillStyle = 'rgba(24,18,8,0.95)';
+  rrect(L.bx, L.by, L.w, L.h, 10); ctx.fill();
+  ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
+  const cx = L.bx + L.w / 2;
+  // Başlık: emoji + isim
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(cfg.emoji + ' ' + fitText(cfg.name, L.w - 30), cx, L.by + 20);
+  // Seviye + HP
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillStyle = '#ffe08f';
+  ctx.fillText('Sv ' + b.level + '/3   ❤️ ' + Math.round(b.hp) + '/' + b.maxHP, cx, L.by + 38);
+  // Buton ya da MAX
+  if (b.level >= 3) {
+    ctx.font = 'bold 13px -apple-system, sans-serif';
+    ctx.fillStyle = '#7fff8a';
+    ctx.fillText('★ MAX SEVİYE ★', cx, L.by + L.h - 14);
+  } else {
+    const cost   = upgradeCostFor(b.type, b.level + 1);
+    const afford = food >= cost;
+    ctx.globalAlpha = afford ? 1 : 0.45;
+    ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
+    rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, 7); ctx.fill();
+    ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.font = 'bold 12px -apple-system, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
+    ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+/** Yükselt butonu vuruldu mu? (sv3 veya yem yetersizse null) */
+function upgradeBtnHit(x, y) {
+  if (!upgradeMenu || upgradeMenu.level >= 3) return false;
+  const cost = upgradeCostFor(upgradeMenu.type, upgradeMenu.level + 1);
+  if (food < cost) return false;
+  const L = upgradeMenuLayout(upgradeMenu);
+  return x >= L.btn.x && x <= L.btn.x + L.btn.w && y >= L.btn.y && y <= L.btn.y + L.btn.h;
+}
+
+function doUpgrade(b) {
+  if (b.level >= 3) return;
+  const cost = upgradeCostFor(b.type, b.level + 1);
+  if (food < cost) return;
+  food -= cost;
+  b.level++;
+  b.applyLevel();            // maxHP × seviye + hp = maxHP; etki effectMul ile artar
+  const w = worldFromGrid(b.gridX, b.gridY);
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#5aff8a', maxR: 48 });
+  burst(w.x, w.y, '#5aff8a', 10);
+  sndPower();
+}
+
+/** Yıkım / geri dönüşüm: binayı kaldır, yatırılan toplamın %75'ini iade et. */
+function demolishBuilding(b) {
+  const idx = buildings.indexOf(b);
+  if (idx < 0) return;
+  const refund = Math.round(investedTotal(b) * 0.75);
+  food += refund;
+  buildings.splice(idx, 1);
+  if (upgradeMenu === b) upgradeMenu = null;
+  const w = worldFromGrid(b.gridX, b.gridY);
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#c0c0c0', maxR: 46 });
+  burst(w.x, w.y, '#d05050', 10);
+  sndCatch();
 }
 
 function drawRadialMenu() {
@@ -1732,6 +1933,8 @@ function startGame() {
   speedTimer = 0; shieldTimer = 0;
   buildings.length = 0;
   radialMenu = null;
+  upgradeMenu = null;
+  cancelLongPress();
   buildPulses.length = 0;
   enemies.length = 0;
   score = 0;
@@ -1856,14 +2059,15 @@ function loop(ts) {
     hudFood = food; hudPop = antCount();
     drawHUD();
 
-    // Layer 10: Radyal menü (her şeyin üstünde)
+    // Layer 10: Menüler (her şeyin üstünde) — radyal (boş tile) / upgrade (dolu tile)
     drawRadialMenu();
+    drawUpgradeMenu();
 
     // Yardım metni
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.font = '11px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText("Tile'a tıkla → bina kur  ·  Sürükle · Pinch/Tekerlek zoom · ESC · R ortala", W / 2, H - 88);
+    ctx.fillText("Boş tile → kur · Binaya dokun → yükselt · Basılı tut → yık (%75 iade) · Sürükle/Zoom · ESC · R", W / 2, H - 88);
   } else if (state === 'GAMEOVER') {
     // Draw grid as static backdrop (gradient önbellekten)
     ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
