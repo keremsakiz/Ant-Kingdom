@@ -21,7 +21,7 @@ const CONFIG = {
   CAMERA:    { MIN_ZOOM: 0.55, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
   ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2, MAX: 80,
                CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7,
-               SOLDIER_RANGE: 60, SOLDIER_DPS: 10 },
+               SOLDIER_DETECT_RANGE: 260, SOLDIER_RANGE: 45, SOLDIER_DPS: 10 },
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
   WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
@@ -1156,29 +1156,53 @@ class Ant {
       }
     }
   }
-  /** Soldier: menzilde düşman varsa saldır, yoksa yuva çevresinde devriye gez. */
+  /**
+   * Soldier: GENİŞ algılama menzilinde (DETECT_RANGE) düşman görürse üstüne
+   * KOŞAR, ancak DAR saldırı menzilinde (SOLDIER_RANGE) HASAR verir. Hedef
+   * seçimi "en yakın + yük cezası" ile yapılır → soldier'lar tek düşmana
+   * yığılmaz, otomatik farklı hedeflere dağılır. Yuvadan DETECT_RANGE'den
+   * fazla uzaklaşmaz (leash) → yuva savunmasız kalmaz.
+   */
   updateGuard(dts) {
-    // Menzildeki (SOLDIER_RANGE world px) en yakın düşmanı bul
-    const R = CONFIG.ANT.SOLDIER_RANGE;
-    let near = null, nd = R * R;
-    for (const e of enemies) {
-      if (!e.active) continue;
-      const d = (e.wx - this.wx) ** 2 + (e.wy - this.wy) ** 2;
-      if (d < nd) { nd = d; near = e; }
+    const DET   = CONFIG.ANT.SOLDIER_DETECT_RANGE;
+    const ATK   = CONFIG.ANT.SOLDIER_RANGE;
+    const DET2  = DET * DET, ATK2 = ATK * ATK;
+    const LOAD_PENALTY = 110 * 110; // her ek soldier, hedefi ~110px daha "uzak" sayar
+
+    const distNest = Math.hypot(this.wx - nestW.x, this.wy - nestW.y);
+
+    // Yuvadan çok uzaklaşmadıysa hedef ara (aksi halde leash → guard'a dön)
+    let best = null;
+    if (distNest <= DET) {
+      let bestScore = Infinity;
+      for (const e of enemies) {
+        if (!e.active) continue;
+        const d2 = (e.wx - this.wx) ** 2 + (e.wy - this.wy) ** 2;
+        if (d2 > DET2) continue; // algılama menzili dışında
+        // Kalabalık hedefe ceza ekle → fazlalık soldier bir sonraki en yakına kayar
+        const load  = _enemyLoad.get(e.uid) || 0;
+        const score = d2 + load * LOAD_PENALTY;
+        if (score < bestScore) { bestScore = score; best = e; }
+      }
     }
-    if (near) {
-      // Düşmana yönel + saldır (~SOLDIER_DPS hasar/sn, dts ile ölçekli; 60fps baz)
-      const des = Math.atan2(near.wy - this.wy, near.wx - this.wx);
+
+    if (best) {
+      _enemyLoad.set(best.uid, (_enemyLoad.get(best.uid) || 0) + 1); // bu hedefe atandık
+      const d2  = (best.wx - this.wx) ** 2 + (best.wy - this.wy) ** 2;
+      const des = Math.atan2(best.wy - this.wy, best.wx - this.wx);
       this.angle += aDiff(des, this.angle) * 0.18 * dts;
       this.step(dts);
-      near.hp -= (CONFIG.ANT.SOLDIER_DPS / 60) * dts;
-      if (near.hp <= 0) killEnemy(near);
+      // Yalnızca SALDIRI menzilinde hasar ver (~SOLDIER_DPS/sn, dts ile ölçekli)
+      if (d2 <= ATK2) {
+        best.hp -= (CONFIG.ANT.SOLDIER_DPS / 60) * dts;
+        if (best.hp <= 0) killEnemy(best);
+      }
       return;
     }
-    // Düşman yok → eski guard/devriye davranışı
+
+    // Düşman yok / leash dışı → eski guard/devriye davranışı (yuvaya dön)
     const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > CONFIG.ANT.GUARD_RADIUS) {
+    if (distNest > CONFIG.ANT.GUARD_RADIUS) {
       const des = Math.atan2(-dy, -dx);
       this.angle += aDiff(des, this.angle) * 0.08 * dts;
     } else {
@@ -1461,6 +1485,9 @@ class Enemy {
 
 // Enemy pool (Ant pool / spawnAnt deseni)
 const enemies = [];
+// Soldier hedef-yük sayacı (enemy.uid → o frame'de hedefleyen soldier sayısı).
+// Her frame loop()'ta temizlenir; updateGuard hedef dağılımı için kullanır.
+const _enemyLoad = new Map();
 /** Spawn (or recycle) an enemy of given type, applying wave HP scale */
 function spawnEnemy(type, hpScale) {
   let e = enemies.find(x => !x.active);
@@ -1680,6 +1707,7 @@ function loop(ts) {
     drawPheromone();
 
     // Update ants + enemies (logic) before depth-sorted draw
+    _enemyLoad.clear(); // her frame sıfırla — soldier hedef-yük dağılımı (bkz. updateGuard)
     for (const a of ants) if (a.active) a.update(dts);
     for (const e of enemies) if (e.active) e.update(dts);
 
