@@ -20,7 +20,8 @@ const CONFIG = {
   GRID:      { COLS: 15, ROWS: 15 },
   CAMERA:    { MIN_ZOOM: 0.55, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
   ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2, MAX: 80,
-               CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7 },
+               CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7,
+               SOLDIER_RANGE: 60, SOLDIER_DPS: 10 },
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
   WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
@@ -31,6 +32,15 @@ const CONFIG = {
     barracks:  { cost: 50, hp:  80, emoji: '⚔️' },
     tower:     { cost: 80, hp:  60, emoji: '🍄' },
     alarm:     { cost: 25, hp:  40, emoji: '🔔' }
+  },
+  // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
+  // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
+  ENEMIES: {
+    spider:     { hp: 15, speed: 1.6, queenDmg:  5, reward:  8, unlockWave:  1, emoji: '🕷' },
+    ladybug:    { hp: 30, speed: 1.0, queenDmg:  8, reward: 12, unlockWave:  1, emoji: '🐞' },
+    dungbeetle: { hp: 70, speed: 0.6, queenDmg: 15, reward: 25, unlockWave:  5, emoji: '🪲' },
+    bird:       { hp: 25, speed: 1.4, queenDmg: 12, reward: 20, unlockWave: 10, emoji: '🐦' },
+    enemyant:   { hp: 40, speed: 1.1, queenDmg: 10, reward: 18, unlockWave: 20, emoji: '🐜' }
   }
 };
 
@@ -80,7 +90,8 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // Keep diamond edges crisp at all zoom levels (no bilinear blur on paths)
   ctx.imageSmoothingEnabled = false;
-  _bgGradient = null; // arka plan gradient'i ekran boyutuna bağlı → resize'da yenile
+  _bgGradient   = null; // arka plan gradient'i ekran boyutuna bağlı → resize'da yenile
+  _warnGradient = null; // dalga uyarı vinyeti de ekran boyutuna bağlı → yenile
   centerCamera();
 }
 
@@ -94,6 +105,19 @@ function getBgGradient() {
     _bgGradient.addColorStop(1, '#1c130a');
   }
   return _bgGradient;
+}
+
+// ===== DALGA UYARI VİNYET ÖNBELLEĞİ =====
+// Hazırlık fazında ekran kenarlarından hafif kırmızı ışıma. createRadialGradient
+// pahalı — boyut değişmedikçe (resize) yeniden üretme; merkezi şeffaf, kenar kırmızı.
+let _warnGradient = null;
+function getWarnGradient() {
+  if (!_warnGradient) {
+    _warnGradient = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.32, W / 2, H / 2, Math.max(W, H) * 0.72);
+    _warnGradient.addColorStop(0, 'rgba(200,30,20,0)');
+    _warnGradient.addColorStop(1, 'rgba(200,30,20,0.5)');
+  }
+  return _warnGradient;
 }
 
 // ===== EMOJİ SPRITE ÖNBELLEĞİ =====
@@ -1132,8 +1156,26 @@ class Ant {
       }
     }
   }
-  /** Soldier patrol around nest (düşman yok → guard; FAZ 2'de saldırı eklenecek) */
+  /** Soldier: menzilde düşman varsa saldır, yoksa yuva çevresinde devriye gez. */
   updateGuard(dts) {
+    // Menzildeki (SOLDIER_RANGE world px) en yakın düşmanı bul
+    const R = CONFIG.ANT.SOLDIER_RANGE;
+    let near = null, nd = R * R;
+    for (const e of enemies) {
+      if (!e.active) continue;
+      const d = (e.wx - this.wx) ** 2 + (e.wy - this.wy) ** 2;
+      if (d < nd) { nd = d; near = e; }
+    }
+    if (near) {
+      // Düşmana yönel + saldır (~SOLDIER_DPS hasar/sn, dts ile ölçekli; 60fps baz)
+      const des = Math.atan2(near.wy - this.wy, near.wx - this.wx);
+      this.angle += aDiff(des, this.angle) * 0.18 * dts;
+      this.step(dts);
+      near.hp -= (CONFIG.ANT.SOLDIER_DPS / 60) * dts;
+      if (near.hp <= 0) killEnemy(near);
+      return;
+    }
+    // Düşman yok → eski guard/devriye davranışı
     const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
     const dist = Math.hypot(dx, dy);
     if (dist > CONFIG.ANT.GUARD_RADIUS) {
@@ -1317,6 +1359,221 @@ function drawParticles(dts) {
   ctx.globalAlpha = 1;
 }
 
+// ===== ENEMIES (Faz 2A) =====
+// Düşmanlar Ant ile aynı "world" uzayda yaşar (wx/wy), aynı diamond-clamp ile
+// grid içinde kalır ve aynı (wy + uid) derinlik sıralamasına katılır → flicker yok.
+let score = 0; // koşu boyu biriken skor (düşman ödülleri); GAMEOVER'da kullanılır
+
+/** Grid kenarından (yuvadan uzak) rastgele bir spawn dünya-noktası seç */
+function enemySpawnPoint() {
+  const COLS = CONFIG.GRID.COLS, ROWS = CONFIG.GRID.ROWS;
+  let col, row;
+  switch (Math.floor(Math.random() * 4)) {
+    case 0: col = 0;        row = Math.floor(Math.random() * ROWS); break;
+    case 1: col = COLS - 1; row = Math.floor(Math.random() * ROWS); break;
+    case 2: row = 0;        col = Math.floor(Math.random() * COLS); break;
+    default: row = ROWS - 1; col = Math.floor(Math.random() * COLS); break;
+  }
+  return worldFromGrid(col, row);
+}
+
+class Enemy {
+  constructor() { this.active = false; this.uid = _uid++; }
+  /** (Re)initialize a pooled enemy. hpScale = dalga HP çarpanı. */
+  init(type, hpScale) {
+    const cfg = CONFIG.ENEMIES[type];
+    const sp  = enemySpawnPoint();
+    this.type     = type;
+    this.wx = sp.x; this.wy = sp.y;
+    this.maxHp    = cfg.hp * hpScale;
+    this.hp       = this.maxHp;
+    this.speed    = cfg.speed;
+    this.queenDmg = cfg.queenDmg;
+    this.reward   = cfg.reward;
+    this.emoji    = cfg.emoji;
+    this.angle    = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
+    this.wig      = Math.random() * 10;
+    this.active   = true;
+  }
+  /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
+  update(dts) {
+    const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
+    this.angle += aDiff(des, this.angle) * 0.12 * dts;
+    this.step(dts);
+
+    const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
+    if (dx * dx + dy * dy < NEST_WORLD_R * NEST_WORLD_R) {
+      hudQueenHP -= this.queenDmg;
+      this.active = false;
+      queenFlash = 1;
+      burst(this.wx, this.wy, '#c81e14', 8);
+      if (hudQueenHP <= 0) { hudQueenHP = 0; endGame(score, wave); }
+    }
+  }
+  /** Konumu ilerlet, sonra Ant.step ile AYNI diamond-clamp'le grid içinde tut. */
+  step(dts) {
+    this.wig += 0.3 * dts;
+    this.wx += Math.cos(this.angle) * this.speed * dts;
+    this.wy += Math.sin(this.angle) * this.speed * dts;
+
+    const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
+    let col = this.wx / TW + this.wy / TH;
+    let row = this.wy / TH - this.wx / TW;
+    const lo = 0.3;
+    const hiC = CONFIG.GRID.COLS - 1 - 0.3;
+    const hiR = CONFIG.GRID.ROWS - 1 - 0.3;
+    let outside = false;
+    if (col < lo)  { col = lo;  outside = true; }
+    if (col > hiC) { col = hiC; outside = true; }
+    if (row < lo)  { row = lo;  outside = true; }
+    if (row > hiR) { row = hiR; outside = true; }
+    if (outside) {
+      const w = worldFromGrid(col, row);
+      this.wx = w.x; this.wy = w.y;
+    }
+  }
+  /** Çizim — binalardaki gibi önceden pişirilmiş emoji sprite + sade HP barı. */
+  draw() {
+    const sp  = screenFromWorld(this.wx, this.wy);
+    const s   = camera.scale;
+    const fontPx = Math.max(14, Math.round(22 * s));
+    const spr = getEmojiSprite(this.emoji, fontPx);
+
+    // Gölge (alpha elle ayarla/sıfırla — save/restore'dan ucuz)
+    ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(sp.x, sp.y + 5 * s, 9 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.drawImage(spr.canvas, sp.x - spr.size / 2, sp.y - spr.size / 2, spr.size, spr.size);
+
+    // HP barı (yeşil→kırmızı, zoom'a ölçekli, gradient/shadow yok)
+    const frac = Math.max(0, this.hp / this.maxHp);
+    const bw = 26 * s, bh = 4 * s;
+    const bx = sp.x - bw / 2, by = sp.y - 16 * s;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    const r = Math.round(220 * (1 - frac) + 40 * frac);
+    const g = Math.round(200 * frac + 40 * (1 - frac));
+    ctx.fillStyle = `rgb(${r},${g},40)`;
+    ctx.fillRect(bx, by, bw * frac, bh);
+  }
+}
+
+// Enemy pool (Ant pool / spawnAnt deseni)
+const enemies = [];
+/** Spawn (or recycle) an enemy of given type, applying wave HP scale */
+function spawnEnemy(type, hpScale) {
+  let e = enemies.find(x => !x.active);
+  if (!e) { if (enemies.length >= CONFIG.POOL.ENEMIES) return null; e = new Enemy(); enemies.push(e); }
+  e.init(type, hpScale); return e;
+}
+/** Count active enemies */
+function enemyCount() { let n = 0; for (const e of enemies) if (e.active) n++; return n; }
+
+/** Düşman öldü: skor + parçacık + ses (mevcut sndCatch'i yeniden kullan) */
+function killEnemy(e) {
+  e.active = false;
+  score += e.reward;
+  burst(e.wx, e.wy, '#ff6a3a', 10);
+  sndCatch();
+}
+
+// ===== WAVE SYSTEM (Faz 2A) =====
+// Akış: [PREP PREP_MS] → [WAVE DURATION_MS] → PREP ... Düşmanlar dalga süresine
+// yayılarak (periyodik) spawn olur; dalga süre dolunca VEYA hepsi ölünce biter.
+let wave            = 1;
+let wavePhase       = 'PREP';   // 'PREP' | 'WAVE'
+let phaseTimer      = 0;        // ms — bulunulan fazda geçen süre
+let waveToSpawn     = 0;        // kalan spawn edilecek düşman
+let waveSpawnTimer  = 0;        // ms akümülatörü
+let waveSpawnEvery  = 0;        // ms — spawn'lar arası süre
+let waveHpScale     = 1;        // HP_GROWTH^(wave-1)
+let queenFlash      = 0;        // kraliçe hasar anı kırmızı flash (0..1, söner)
+
+function resetWaves() {
+  wave = 1; wavePhase = 'PREP'; phaseTimer = 0;
+  waveToSpawn = 0; waveSpawnTimer = 0; waveSpawnEvery = 0; waveHpScale = 1;
+  queenFlash = 0;
+  hudWave = wave;
+  hudTime = Math.ceil(CONFIG.WAVE.PREP_MS / 1000);
+}
+
+function updateWave(dt) {
+  phaseTimer += dt;
+  if (wavePhase === 'PREP') {
+    hudTime = Math.max(0, Math.ceil((CONFIG.WAVE.PREP_MS - phaseTimer) / 1000));
+    if (phaseTimer >= CONFIG.WAVE.PREP_MS) startWave();
+  } else { // WAVE
+    if (waveToSpawn > 0) {
+      waveSpawnTimer += dt;
+      while (waveToSpawn > 0 && waveSpawnTimer >= waveSpawnEvery) {
+        waveSpawnTimer -= waveSpawnEvery;
+        spawnWaveEnemy();
+        waveToSpawn--;
+      }
+    }
+    hudTime = Math.max(0, Math.ceil((CONFIG.WAVE.DURATION_MS - phaseTimer) / 1000));
+    // Süre dolunca VEYA tüm düşman spawn edilip öldüyse dalga biter
+    if (phaseTimer >= CONFIG.WAVE.DURATION_MS || (waveToSpawn === 0 && enemyCount() === 0)) endWave();
+  }
+}
+
+function startWave() {
+  wavePhase  = 'WAVE';
+  phaseTimer = 0;
+  const count = CONFIG.WAVE.BASE_ENEMIES + wave * CONFIG.WAVE.ENEMY_PER_WAVE;
+  waveToSpawn    = count;
+  waveHpScale    = Math.pow(CONFIG.WAVE.HP_GROWTH, wave - 1);
+  waveSpawnEvery = CONFIG.WAVE.DURATION_MS / (count + 1); // süreye yay
+  waveSpawnTimer = 0;
+  hudWave = wave;
+}
+
+/** unlockWave'e göre uygun tiplerden rastgele birini spawn et */
+function spawnWaveEnemy() {
+  const pool = [];
+  for (const t in CONFIG.ENEMIES) if (wave >= CONFIG.ENEMIES[t].unlockWave) pool.push(t);
+  const type = pool[Math.floor(Math.random() * pool.length)];
+  spawnEnemy(type, waveHpScale);
+}
+
+function endWave() {
+  food += wave * CONFIG.WAVE.BONUS_PER_WAVE; // dalga bonusu
+  wave++;
+  wavePhase  = 'PREP';
+  phaseTimer = 0;
+  hudWave = wave;
+}
+
+/** Kraliçe hasar flash'ı + hazırlık fazı uyarı vinyeti & geri sayım bandı. */
+function drawWaveOverlay(dt) {
+  // Kraliçe hasar anı: tek-kare-benzeri kırmızı tam ekran flash (hızlı söner)
+  if (queenFlash > 0) {
+    ctx.fillStyle = 'rgba(200,20,15,' + (queenFlash * 0.4).toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+    queenFlash -= dt / 350;
+    if (queenFlash < 0) queenFlash = 0;
+  }
+  // Hazırlık fazı: hafif kırmızı kenar ışıması (nabız) + "Dalga X geliyor!" geri sayım
+  if (wavePhase === 'PREP') {
+    const pulse = 0.35 + 0.25 * Math.sin(performance.now() / 300);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = getWarnGradient();
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    const secs = Math.max(0, Math.ceil((CONFIG.WAVE.PREP_MS - phaseTimer) / 1000));
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffcaca';
+    ctx.font = 'bold 22px -apple-system, sans-serif';
+    ctx.fillText('⚠ Dalga ' + wave + ' geliyor!', W / 2, 92);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 30px -apple-system, sans-serif';
+    ctx.fillText(secs + 's', W / 2, 124);
+  }
+}
+
 // ===== GAME FLOW =====
 function startGame() {
   state = 'PLAYING';
@@ -1341,6 +1598,9 @@ function startGame() {
   buildings.length = 0;
   radialMenu = null;
   buildPulses.length = 0;
+  enemies.length = 0;
+  score = 0;
+  resetWaves();
 
   // Başlangıç kolonisi
   for (let i = 0; i < CONFIG.ANT.START_WORKERS;  i++) spawnAnt('worker');
@@ -1350,7 +1610,7 @@ function startGame() {
   // Başlangıç yemleri
   for (let i = 0; i < 6; i++) spawnFood();
 
-  hudWave = 1; hudTime = 60; hudQueenHP = CONFIG.QUEEN.MAX_HP;
+  hudQueenHP = CONFIG.QUEEN.MAX_HP; // hudWave/hudTime resetWaves() içinde ayarlandı
 }
 
 function endGame(score, wave) {
@@ -1362,7 +1622,7 @@ function endGame(score, wave) {
 
 // ESC → fake game-over (test only)
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && state === 'PLAYING') endGame(0, hudWave);
+  if (e.key === 'Escape' && state === 'PLAYING') endGame(score, wave);
   if (e.key === 'r' && state === 'PLAYING') centerCamera();
 });
 
@@ -1410,14 +1670,18 @@ function loop(ts) {
       }
     }
 
+    // ── Dalga sistemi (PREP/WAVE faz akışı + periyodik düşman spawn) ──
+    updateWave(dt);
+
     // Layer 1: Zemin tile'ları
     drawGrid();
 
     // Layer 2: Feromon overlay
     drawPheromone();
 
-    // Update ants (logic) before depth-sorted draw
+    // Update ants + enemies (logic) before depth-sorted draw
     for (const a of ants) if (a.active) a.update(dts);
+    for (const e of enemies) if (e.active) e.update(dts);
 
     // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
     // ONE consistent depth anchor for every object: its world-Y center (wy). Food
@@ -1435,6 +1699,7 @@ function loop(ts) {
       drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
     }
     for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, t: 1, o: a });
+    for (const e of enemies) if (e.active) drawables.push({ wy: e.wy, uid: e.uid, t: 1, o: e });
     // STABLE order: break wy ties by the object's permanent uid, so equal-depth
     // objects keep a fixed relative order every frame regardless of push order or
     // engine sort stability. No tie ever resolves by chance → no flicker.
@@ -1444,6 +1709,9 @@ function loop(ts) {
     // Layer 8: Particles + build pulses
     drawParticles(dts);
     drawBuildPulses(dts);
+
+    // Layer 8.5: Kraliçe hasar flash + hazırlık fazı uyarı/geri sayım
+    drawWaveOverlay(dt);
 
     // Layer 9: HUD
     hudFood = food; hudPop = antCount();
