@@ -37,11 +37,11 @@ const CONFIG = {
     moat:      { cost: 60, hp:  50, emoji: '🌊', name: 'Hendek',      slowByLevel: [0.4, 0.3, 0.2] },
     barricade: { cost: 90, hp: 120, emoji: '🪨', name: 'Barikat' },
     barracks:  { cost: 150, hp:  80, emoji: '⚔️', name: 'Kışla',       spawnInterval: 15000 },
-    tower:     { cost: 240, hp:  60, emoji: '🍄', name: 'Zehir Kulesi', range: 150, cooldown: 2000, poisonDmg: 28 },
+    tower:     { cost: 320, hp:  60, emoji: '🍄', name: 'Zehir Kulesi', range: 150, cooldown: 2000, poisonDmg: 28, maxCount: 4 },
     alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 },
     // ranger.range/cooldown/dmg — TEK HEDEF mermi: menzil(world px)/atış periyodu(ms)/mermi hasarı.
     // effectMul ile range/dmg artar, cooldown azalır (cooldown/eff → daha sık).
-    ranger:    { cost: 180, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14 }
+    ranger:    { cost: 220, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14, maxCount: 4 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
@@ -870,12 +870,12 @@ function onPlayingTap(x, y) {
   // Radyal menü (boş tile kurma) açıksa — önce menüyle etkileş
   if (radialMenu) {
     const hit = radialHit(x, y);
-    if (hit && food >= CONFIG.BUILDINGS[hit].cost) {
+    if (hit && canBuild(hit) && canPlaceTypeAt(hit, radialMenu.col, radialMenu.row)) {
       placeBuilding(hit); // içinde radialMenu = null yapar
     } else if (!hit) {
       radialMenu = null;  // dışına tıklama → kapat
     }
-    // yemi yetmiyorsa ikon tıklanamaz, menü açık kalır
+    // yem yetmiyor / limit dolu / yuva çevresi değilse ikon tıklanamaz, menü açık kalır
     return;
   }
 
@@ -1041,6 +1041,35 @@ function investedTotal(b) {
   let total = CONFIG.BUILDINGS[b.type].cost;
   for (let lv = 2; lv <= b.level; lv++) total += upgradeCostFor(b.type, lv);
   return total;
+}
+
+// Ranger (atış kulesi 🏹) yuva savunması içindir: SADECE yuva çevresindeki
+// tile'lara kurulabilir. Yuva 3×3 merkezinin ETRAFINDAKI ~1-2 halka: grid
+// (Chebyshev) mesafe <= NEAR_NEST_R → izinli. Eşik oynanabilir.
+const NEAR_NEST_R = 3;
+function nearNest(col, row) {
+  return Math.max(Math.abs(col - NEST_COL), Math.abs(row - NEST_ROW)) <= NEAR_NEST_R;
+}
+
+/** buildings dizisinde o tipten kaç tane var. */
+function buildingCount(type) {
+  let n = 0;
+  for (const b of buildings) if (b.type === type) n++;
+  return n;
+}
+
+/** Yeterli yem VE (maxCount yoksa YA DA o tipten limit dolmamış) mı? */
+function canBuild(type) {
+  const cfg = CONFIG.BUILDINGS[type];
+  if (food < cfg.cost) return false;
+  if (cfg.maxCount != null && buildingCount(type) >= cfg.maxCount) return false;
+  return true;
+}
+
+/** Bu tipin BU tile'a konum izni var mı? Şu an sadece ranger: yuva çevresi. */
+function canPlaceTypeAt(type, col, row) {
+  if (type === 'ranger') return nearNest(col, row);
+  return true;
 }
 
 const RADIAL_R  = 80; // ikon yayı yarıçapı (screen px) — komşu daireler arası net boşluk
@@ -1392,14 +1421,18 @@ function drawRadialMenu() {
     const iy     = y + Math.sin(angle) * RADIAL_R;
     const type   = BUILDING_TYPES[i];
     const cfg    = CONFIG.BUILDINGS[type];
-    const afford = food >= cfg.cost;
+    // Kurulabilirlik üç koşul: yem + limit (canBuild) + konum izni (yuva-çevresi).
+    const afford    = food >= cfg.cost;
+    const limitFull = cfg.maxCount != null && buildingCount(type) >= cfg.maxCount;
+    const placeOK   = canPlaceTypeAt(type, radialMenu.col, radialMenu.row);
+    const enabled   = afford && !limitFull && placeOK;
 
-    ctx.globalAlpha = afford ? 1 : 0.42;
+    ctx.globalAlpha = enabled ? 1 : 0.42;
 
     ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2);
-    ctx.fillStyle = afford ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
+    ctx.fillStyle = enabled ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
     ctx.fill();
-    ctx.strokeStyle = afford ? '#c8a050' : '#7a3030';
+    ctx.strokeStyle = enabled ? '#c8a050' : '#7a3030';
     ctx.lineWidth   = 1.8;
     ctx.stroke();
 
@@ -1409,10 +1442,12 @@ function drawRadialMenu() {
     ctx.fillStyle    = '#fff';
     ctx.fillText(cfg.emoji, ix, iy - 2);
 
+    // Etiket: limit dolu → "DOLU", yuva-çevresi değil → "YUVA", yoksa fiyat.
     ctx.font         = 'bold 10px -apple-system, sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = afford ? '#ffe08f' : '#ff8888';
-    ctx.fillText(cfg.cost, ix, iy + RADIAL_IR + 13);
+    ctx.fillStyle    = enabled ? '#ffe08f' : '#ff8888';
+    const label = limitFull ? 'DOLU' : (!placeOK ? 'YUVA' : cfg.cost);
+    ctx.fillText(label, ix, iy + RADIAL_IR + 13);
 
     ctx.globalAlpha = 1;
   }
