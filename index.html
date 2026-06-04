@@ -80,7 +80,49 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // Keep diamond edges crisp at all zoom levels (no bilinear blur on paths)
   ctx.imageSmoothingEnabled = false;
+  _bgGradient = null; // arka plan gradient'i ekran boyutuna bağlı → resize'da yenile
   centerCamera();
+}
+
+// ===== ARKA PLAN GRADIENT ÖNBELLEĞİ =====
+// createRadialGradient pahalı; boyut değişmedikçe (sadece resize) yeniden üretme.
+let _bgGradient = null;
+function getBgGradient() {
+  if (!_bgGradient) {
+    _bgGradient = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
+    _bgGradient.addColorStop(0, '#3d2a18');
+    _bgGradient.addColorStop(1, '#1c130a');
+  }
+  return _bgGradient;
+}
+
+// ===== EMOJİ SPRITE ÖNBELLEĞİ =====
+// fillText (özellikle shadowBlur ile) her frame çok pahalı. Her benzersiz
+// (emoji, hedef px) çiftini BİR KEZ küçük bir offscreen canvas'a — gölgesi
+// içine pişirilmiş (baked) olarak — render edip, her frame drawImage ile çiz.
+// Font boyutu tam sayı px'e yuvarlandığından (max 14..~40) ve 5 bina emojisi
+// olduğundan önbellek küçük ve sınırlı kalır; zoom değişince yeni boyut üretilir.
+const _emojiCache = new Map();
+function getEmojiSprite(emoji, fontPx) {
+  const key = emoji + '|' + fontPx;
+  let spr = _emojiCache.get(key);
+  if (spr) return spr;
+  const blur = 5 * (fontPx / 20);            // eski Building.draw'daki shadowBlur ≈ 5*scale
+  const pad  = Math.ceil(fontPx * 0.5 + blur + 4);
+  const size = fontPx + pad * 2;             // CSS px cinsinden kare sprite
+  const c    = document.createElement('canvas');
+  c.width = c.height = Math.ceil(size * DPR);
+  const cx = c.getContext('2d');
+  cx.scale(DPR, DPR);                         // ana ctx gibi DPR'de pişir → keskin
+  cx.font         = `${fontPx}px sans-serif`;
+  cx.textAlign    = 'center';
+  cx.textBaseline = 'middle';
+  cx.shadowColor  = 'rgba(0,0,0,0.72)';
+  cx.shadowBlur   = blur;
+  cx.fillText(emoji, size / 2, size / 2);
+  spr = { canvas: c, size };
+  _emojiCache.set(key, spr);
+  return spr;
 }
 
 // ===== ROUNDRECT POLYFILL =====
@@ -895,14 +937,12 @@ class Building {
     const { x, y } = toScreen(this.gridX, this.gridY);
     const s   = camera.scale;
     const cfg = CONFIG.BUILDINGS[this.type];
-    ctx.save();
-    ctx.font         = `${Math.max(14, Math.round(20 * s))}px sans-serif`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor  = 'rgba(0,0,0,0.72)';
-    ctx.shadowBlur   = 5 * s;
-    ctx.fillText(cfg.emoji, x, y - 4 * s);
-    ctx.restore();
+    // Önceden pişirilmiş (gölge baked) emoji bitmap'i — fillText/shadowBlur yok.
+    const fontPx = Math.max(14, Math.round(20 * s));
+    const spr = getEmojiSprite(cfg.emoji, fontPx);
+    // Eski çizim: align=center, baseline=middle → (x, y-4*s) merkezli. Sprite de
+    // merkezli pişti, o yüzden sol-üst köşeyi yarım sprite kadar kaydır.
+    ctx.drawImage(spr.canvas, x - spr.size / 2, (y - 4 * s) - spr.size / 2, spr.size, spr.size);
   }
 }
 
@@ -1162,10 +1202,10 @@ function drawAntFull(x, y, angle, wig, type, carrying, cam) {
   const body = type === 'soldier' ? '#8b1a1a' : type === 'carrier' ? '#c8a020' : '#e8542a';
   const dark = type === 'soldier' ? '#5e0f0f' : type === 'carrier' ? '#9a7a10' : '#c23d18';
 
-  // Shadow
-  ctx.save(); ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
+  // Shadow — save/restore yerine alpha'yı elle ayarla/sıfırla (daha az state cost)
+  ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(x, y + 3.5 * sc, 8 * sc, 4.5 * sc, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  ctx.globalAlpha = 1;
 
   ctx.save();
   ctx.translate(x, y);
@@ -1252,9 +1292,9 @@ function drawPheromone() {
 function drawFood(f) {
   const s = screenFromWorld(f.wx, f.wy);
   const t = TYPES[f.type], cam = camera.scale;
-  ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
+  ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
   ctx.beginPath(); ctx.ellipse(s.x, s.y + 2 * cam, t.r * cam, t.r * 0.5 * cam, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = t.c;  ctx.beginPath(); ctx.arc(s.x, s.y, t.r * cam, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(s.x - t.r * 0.3 * cam, s.y - t.r * 0.3 * cam, t.r * 0.4 * cam, 0, Math.PI * 2); ctx.fill();
 }
@@ -1331,10 +1371,8 @@ function loop(ts) {
     updateMenu(dt);
     drawMenu();
   } else if (state === 'PLAYING') {
-    // Background gradient
-    const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
-    bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // Background gradient (önbellekten — her frame yeniden yaratılmıyor)
+    ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
 
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
 
@@ -1375,18 +1413,21 @@ function loop(ts) {
     // worldFromGrid(...).y — the SAME formula, no special-casing. Mixing anchors
     // (e.g. an extra half-tile bias on buildings only) makes objects collide with
     // a neighbouring diagonal's depths and flip order frame-to-frame → flicker.
+    // Her frame yeni closure (() => ...) yaratmak yerine, tip etiketi (t) + nesne
+    // referansı (o) sakla → çizimde dispatch et. Bu, frame başına 3×N kapama
+    // tahsisini kaldırır (GC baskısını ciddi azaltır). Sıralama mantığı AYNI.
     drawables.length = 0;
-    for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, draw: () => drawFood(f) });
+    for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, t: 0, o: f });
     for (const b of buildings) {
       const bwy = worldFromGrid(b.gridX, b.gridY).y;
-      drawables.push({ wy: bwy, uid: b.uid, draw: () => b.draw() });
+      drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
     }
-    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, draw: () => a.draw() });
+    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, t: 1, o: a });
     // STABLE order: break wy ties by the object's permanent uid, so equal-depth
     // objects keep a fixed relative order every frame regardless of push order or
     // engine sort stability. No tie ever resolves by chance → no flicker.
     drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
-    for (const d of drawables) d.draw();
+    for (const d of drawables) { if (d.t === 0) drawFood(d.o); else d.o.draw(); }
 
     // Layer 8: Particles + build pulses
     drawParticles(dts);
@@ -1405,10 +1446,8 @@ function loop(ts) {
     ctx.textAlign = 'center';
     ctx.fillText("Tile'a tıkla → bina kur  ·  Sürükle · Pinch/Tekerlek zoom · ESC · R ortala", W / 2, H - 88);
   } else if (state === 'GAMEOVER') {
-    // Draw grid as static backdrop
-    const bg = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, Math.max(W, H) / 1.1);
-    bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // Draw grid as static backdrop (gradient önbellekten)
+    ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
     drawGrid();
     drawGameover();
   }
