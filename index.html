@@ -41,7 +41,12 @@ const CONFIG = {
     alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 },
     // ranger.range/cooldown/dmg — TEK HEDEF mermi: menzil(world px)/atış periyodu(ms)/mermi hasarı.
     // effectMul ile range/dmg artar, cooldown azalır (cooldown/eff → daha sık).
-    ranger:    { cost: 220, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14, maxCount: 4 }
+    ranger:    { cost: 220, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14, maxCount: 4 },
+    // catapult (MANCINIK) — ranger'ın AĞIR versiyonu: yavaş atış (cooldown 2500),
+    // sert hasar (dmg 45), AOE gülle (aoeRadius 70). En yakın düşmana gülle fırlatır,
+    // temas noktasında aoeRadius içindeki TÜM düşmanlara hasar verir. effectMul ile
+    // range/dmg/aoeRadius artar, cooldown azalır. Güçlü enemyant dalgalarına karşı.
+    catapult:  { cost: 300, hp:  70, emoji: '🏰', name: 'Mancınık', range: 160, cooldown: 2500, dmg: 45, aoeRadius: 70, maxCount: 3 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
@@ -810,7 +815,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.52)';
   ctx.fillRect(0, H - barH, W, barH);
 
-  const btnW = 48, btnH = 58, btnGap = 8; // 6 bina: 6×48 + 5×8 = 328px → 390px baz ekrana sığar
+  const btnW = 44, btnH = 58, btnGap = 6; // 7 bina: 7×44 + 6×6 = 344px → 390px baz ekrana sığar
   const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
   let bx = Math.round(W / 2 - totalBtnW / 2);
   const by = H - barH + 11;
@@ -1008,7 +1013,7 @@ function spawnFood(col, row, type) {
 }
 
 // ===== BUILDINGS =====
-const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm', 'ranger'];
+const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm', 'ranger', 'catapult'];
 let buildings   = [];
 let radialMenu  = null; // { col, row } — boş tile'a kurma menüsü
 let upgradeMenu = null; // Building referansı — dolu tile'a upgrade balonu
@@ -1074,8 +1079,8 @@ function canPlaceTypeAt(type, col, row) {
   return true;
 }
 
-const RADIAL_R  = 80; // ikon yayı yarıçapı (screen px) — komşu daireler arası net boşluk
-const RADIAL_IR = 20; // ikon daire yarıçapı
+const RADIAL_R  = 94; // ikon yayı yarıçapı (screen px) — 7 ikon yarım dairede çakışmasın
+const RADIAL_IR = 19; // ikon daire yarıçapı
 
 // ── Bina etki yardımcıları (Faz 3B) ──
 // Binalar az (~birkaç) olduğu için her-frame düz tarama yeterli; ekstra yapı/tahsis yok.
@@ -1250,6 +1255,33 @@ class Building {
           });
         }
       }
+    } else if (this.type === 'catapult') {
+      // MANCINIK: ranger gibi mermi/gülle atar AMA temas noktasında tower gibi AOE
+      // hasar verir. Yavaş (cooldown 2500/eff) ama sert. Menzildeki EN YAKIN düşmanı
+      // hedef alıp ona "aoe" işaretli gülle fırlatır; updateBullets temasta patlatır.
+      this.shootTimer += dt;
+      if (this.shootTimer >= cfg.cooldown / eff) {
+        this.shootTimer = 0;
+        const w  = worldFromGrid(this.gridX, this.gridY);
+        const r2 = (cfg.range * eff) ** 2;
+        let best = null, bestD = r2;
+        for (const e of enemies) {
+          if (!e.active) continue;
+          const d2 = (e.wx - w.x) ** 2 + (e.wy - w.y) ** 2;
+          if (d2 <= bestD) { bestD = d2; best = e; }
+        }
+        if (best) {
+          const d  = Math.max(1, Math.hypot(best.wx - w.x, best.wy - w.y));
+          const sp = 5; // gülle ranger merminden yavaş (ağır vuruş hissi)
+          bullets.push({
+            wx: w.x, wy: w.y,
+            vx: (best.wx - w.x) / d * sp,
+            vy: (best.wy - w.y) / d * sp,
+            dmg: cfg.dmg * eff, target: best,
+            aoe: true, aoeRadius: cfg.aoeRadius * eff
+          });
+        }
+      }
     }
   }
   draw() {
@@ -1336,6 +1368,10 @@ function effectLine(b) {
     case 'ranger': {
       const cur = Math.round(cfg.dmg * curM);
       return 'Atış: ' + (isMax ? cur : cur + ' → ' + Math.round(cfg.dmg * nxtM));
+    }
+    case 'catapult': {
+      const cur = Math.round(cfg.dmg * curM); // AOE hasar (patlama)
+      return 'Patlama: ' + (isMax ? cur : cur + ' → ' + Math.round(cfg.dmg * nxtM));
     }
     case 'alarm': {
       const cur = Math.round(cfg.healAmount * curM);
@@ -1546,9 +1582,25 @@ function updateBullets(dts) {
     m.wy += m.vy * dts;
     const dx = e.wx - m.wx, dy = e.wy - m.wy;
     if (dx * dx + dy * dy <= 18 * 18) { // temas
-      e.hp -= m.dmg;
-      burst(e.wx, e.wy, '#ffd24a', 4);
-      if (e.hp <= 0) killEnemy(e);
+      if (m.aoe) {
+        // CATAPULT güllesi: temas noktasında aoeRadius içindeki TÜM aktif düşmanlara
+        // hasar (tower AOE zehir mantığı gibi). Görsel: geniş turuncu+gri patlama.
+        const cx = e.wx, cy = e.wy;
+        const ar2 = m.aoeRadius * m.aoeRadius;
+        for (const en of enemies) {
+          if (!en.active) continue;
+          if ((en.wx - cx) ** 2 + (en.wy - cy) ** 2 > ar2) continue;
+          en.hp -= m.dmg;
+          if (en.hp <= 0) killEnemy(en);
+        }
+        burst(cx, cy, '#ff8a3a', 16); // büyük turuncu patlama (ağır vuruş)
+        burst(cx, cy, '#9a9a9a', 8);  // gri toz/şarapnel
+        buildPulses.push({ wx: cx, wy: cy, life: 1.0, c: '#ff9a4a', maxR: m.aoeRadius });
+      } else {
+        e.hp -= m.dmg; // RANGER: tek hedef (değişmedi)
+        burst(e.wx, e.wy, '#ffd24a', 4);
+        if (e.hp <= 0) killEnemy(e);
+      }
       bullets.splice(i, 1);
     }
   }
@@ -1559,10 +1611,11 @@ function drawBullets() {
   if (!bullets.length) return;
   ctx.save();
   ctx.lineCap = 'round';
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#ffd24a';
   for (const m of bullets) {
     const s = screenFromWorld(m.wx, m.wy);
+    // catapult güllesi kalın/gri-turuncu, ranger merminden belirgin daha ağır görünür
+    ctx.lineWidth   = m.aoe ? 6 : 3;
+    ctx.strokeStyle = m.aoe ? '#c8783c' : '#ffd24a';
     // kısa kuyruk (hız yönünün tersi) → mermi hissi, her-frame ağır iş yok
     ctx.beginPath();
     ctx.moveTo(s.x, s.y);
