@@ -1185,13 +1185,49 @@ function openUpgradeMenu(b) {
 /** Balon yerleşimi (kamera-aware): bina ekran konumundan panel + buton dikdörtgeni. */
 function upgradeMenuLayout(b) {
   const sc = toScreen(b.gridX, b.gridY);
-  const w = 156, h = 96;
+  const w = 168, h = 114; // etki satırı için +yükseklik (Faz 3C balon bilgisi)
   let bx = sc.x - w / 2;
   let by = sc.y - 64 - h;        // binanın üstünde
   bx = Math.max(6, Math.min(W - w - 6, bx));
   by = Math.max(6, by);
   const btn = { x: bx + 12, y: by + h - 32, w: w - 24, h: 26 };
   return { bx, by, w, h, btn };
+}
+
+/**
+ * Upgrade balonundaki etki satırı: "şu an → yükseltince" (MAX'ta sadece şu an).
+ * Değerler effectMul/LVL_MUL ile AYNI formülden türetilir (gösterim, mantık değil).
+ */
+function effectLine(b) {
+  const cfg  = CONFIG.BUILDINGS[b.type];
+  const lvl  = b.level;
+  const isMax = lvl >= 3;
+  const curM = LVL_MUL[lvl - 1];
+  const nxtM = isMax ? 0 : LVL_MUL[lvl];
+  switch (b.type) {
+    case 'tower': {
+      const cur = Math.round(cfg.poisonDmg * curM);
+      return 'Zehir: ' + (isMax ? cur : cur + ' → ' + Math.round(cfg.poisonDmg * nxtM));
+    }
+    case 'alarm': {
+      const cur = Math.round(cfg.healAmount * curM);
+      return isMax ? ('Şifa: +' + cur + '/15sn')
+                   : ('Şifa: +' + cur + ' → +' + Math.round(cfg.healAmount * nxtM) + '/15sn');
+    }
+    case 'barracks': {
+      const cur = (cfg.spawnInterval / curM / 1000).toFixed(1);
+      return isMax ? ('Asker: her ' + cur + 'sn')
+                   : ('Asker: her ' + cur + 'sn → ' + (cfg.spawnInterval / nxtM / 1000).toFixed(1) + 'sn');
+    }
+    case 'moat': {
+      const cur = cfg.slowByLevel[lvl - 1];
+      return 'Hız: ' + (isMax ? '×' + cur : '×' + cur + ' → ×' + cfg.slowByLevel[lvl]);
+    }
+    case 'barricade': {
+      return 'Engel — HP: ' + (isMax ? b.maxHP : b.maxHP + ' → ' + Math.round(cfg.hp * nxtM));
+    }
+  }
+  return '';
 }
 
 function drawUpgradeMenu() {
@@ -1215,6 +1251,10 @@ function drawUpgradeMenu() {
   ctx.font = '11px -apple-system, sans-serif';
   ctx.fillStyle = '#ffe08f';
   ctx.fillText('Sv ' + b.level + '/3   ❤️ ' + Math.round(b.hp) + '/' + b.maxHP, cx, L.by + 38);
+  // Etkiye özgü satır: mevcut → yükseltince (MAX'ta sadece mevcut)
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillStyle = '#9fe89f';
+  ctx.fillText(fitText(effectLine(b), L.w - 16), cx, L.by + 55);
   // Buton ya da MAX
   if (b.level >= 3) {
     ctx.font = 'bold 13px -apple-system, sans-serif';
