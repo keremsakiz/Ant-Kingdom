@@ -1008,11 +1008,21 @@ let buildings   = [];
 let radialMenu  = null; // { col, row } — boş tile'a kurma menüsü
 let upgradeMenu = null; // Building referansı — dolu tile'a upgrade balonu
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
+let floatTexts  = [];   // { wx, wy, life, text, color } — upgrade anı yükselen "Sv X!"
 
 // Faz 3C: seviye çarpanları. Index = level-1. Hem etki hem maxHP için kullanılır.
 //   sv1 ×1.0, sv2 ×1.4, sv3 ×1.9  (tower hasarı/healer şifası artar, barracks
 //   intervali / çarpan → daha sık, maxHP × çarpan).
 const LVL_MUL = [1.0, 1.4, 1.9];
+
+// Faz 3C: kalıcı seviye görseli (METİN YOK — renk + boyut). Index = level-1.
+//   sv1 nötr (halka yok), sv2 gümüş + %12 büyük, sv3 altın + %25 büyük.
+//   ring=arka hâle/halka çiz; scale=emoji drawImage ölçeği; glowA=hâle dolgu alfası.
+const LVL_TIER = [
+  { color: '#cd7f32', scale: 1.00, ring: false, glowA: 0.00 }, // bronz/nötr
+  { color: '#c0c0c0', scale: 1.12, ring: true,  glowA: 0.16 }, // gümüş
+  { color: '#ffd700', scale: 1.25, ring: true,  glowA: 0.24 }  // altın
+];
 
 /** type binasının toLevel seviyesine yükseltme maliyeti (sv2 = ×1.5, sv3 = ×2.5). */
 function upgradeCostFor(type, toLevel) {
@@ -1049,9 +1059,10 @@ function moatSlowAt(wx, wy) {
 }
 
 /**
- * Healer (alarm) sınırı: yuva menzilindeki healer'lardan yalnız EN FAZLA 2'si
+ * Healer (alarm) sınırı: yuva menzilindeki healer'lardan yalnız EN FAZLA 3'ü
  * (en eski kurulan, uid sıralı) kraliçeyi iyileştirebilir. Fazlası boşa gider.
- * Timer başına (15sn) ~bir kez çağrılır → her-frame maliyeti yok.
+ * Timer başına (15sn) ~bir kez çağrılır → her-frame maliyeti yok. Sınır 3 olsa da
+ * healer sv1 zayıf (+3/15sn) başladığı için ölümsüzlük oluşmaz.
  */
 function alarmCanHeal(b) {
   const r2 = CONFIG.BUILDINGS.alarm.healRange ** 2;
@@ -1062,7 +1073,7 @@ function alarmCanHeal(b) {
     if ((w.x - nestW.x) ** 2 + (w.y - nestW.y) ** 2 <= r2) inRange.push(o);
   }
   inRange.sort((a, c) => a.uid - c.uid);
-  return inRange.indexOf(b) < 2;
+  return inRange.indexOf(b) < 3;
 }
 
 /** (col,row) tam-tile koordinatı bir barikatla dolu mu? */
@@ -1142,8 +1153,8 @@ class Building {
       // healAmount kadar iyileştirir (MAX_HP'yi aşmadan). Yuvadan uzaktaysa etkisiz
       // → oyuncu stratejik olarak yuvaya yakın kurmak zorunda. (Bina onarımı Faz 2B.)
       // DENGE (Faz 3C): healer sv1 zayıf (+3) ve yuva menzilindeki healer'lardan
-      // EN FAZLA 2 tanesi kraliçeyi iyileştirir (alarmCanHeal). Böylece nice healer
-      // dizmek ölümsüzlük getirmez; upgrade (sv3 ≈ +6) şart.
+      // EN FAZLA 3 tanesi kraliçeyi iyileştirir (alarmCanHeal). Zayıf başlangıç
+      // ölümsüzlüğü engeller; upgrade (sv3 ≈ +6) şart.
       this.healTimer += dt;
       if (this.healTimer >= cfg.healInterval) {
         this.healTimer = 0;
@@ -1165,9 +1176,25 @@ class Building {
     // Önceden pişirilmiş (gölge baked) emoji bitmap'i — fillText/shadowBlur yok.
     const fontPx = Math.max(14, Math.round(20 * s));
     const spr = getEmojiSprite(cfg.emoji, fontPx);
-    // Eski çizim: align=center, baseline=middle → (x, y-4*s) merkezli. Sprite de
-    // merkezli pişti, o yüzden sol-üst köşeyi yarım sprite kadar kaydır.
-    ctx.drawImage(spr.canvas, x - spr.size / 2, (y - 4 * s) - spr.size / 2, spr.size, spr.size);
+    const cy  = y - 4 * s; // emoji merkezi (eski hizalama korunur)
+    // Kalıcı SEVİYE GÖRSELİ (metin yok): sv2 gümüş / sv3 altın hâle+halka + büyütme.
+    // Ucuz: tek dolu daire + tek stroke (gradient yok) → çok binada da hafif.
+    const tier = LVL_TIER[this.level - 1];
+    if (tier.ring) {
+      const rr = spr.size * 0.40 * tier.scale;
+      ctx.save();
+      ctx.globalAlpha = tier.glowA;
+      ctx.fillStyle   = tier.color;
+      ctx.beginPath(); ctx.arc(x, cy, rr, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth   = Math.max(1.5, 2 * s);
+      ctx.strokeStyle = tier.color;
+      ctx.beginPath(); ctx.arc(x, cy, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    // Sprite merkezli pişti → sol-üst köşeyi yarım (ölçekli) sprite kadar kaydır.
+    const sz = spr.size * tier.scale;
+    ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
   }
 }
 
@@ -1293,8 +1320,15 @@ function doUpgrade(b) {
   b.level++;
   b.applyLevel();            // maxHP × seviye + hp = maxHP; etki effectMul ile artar
   const w = worldFromGrid(b.gridX, b.gridY);
+  // Mevcut yeşil yükselme dalgası + parçacık (korunur)
   buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#5aff8a', maxR: 48 });
   burst(w.x, w.y, '#5aff8a', 10);
+  // Faz 3C: ulaşılan seviyenin rengiyle (gümüş/altın) daha büyük patlama + halka,
+  // ve binanın üstünde yukarı kayıp solan "Sv X!" metni → upgrade net görünsün.
+  const tier = LVL_TIER[b.level - 1];
+  buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: tier.color, maxR: 58 });
+  burst(w.x, w.y, tier.color, 16);
+  floatTexts.push({ wx: w.x, wy: w.y, life: 1.0, text: 'Sv ' + b.level + '!', color: tier.color });
   sndPower();
 }
 
@@ -1389,6 +1423,30 @@ function drawBuildPulses(dts) {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/** Upgrade anı "Sv X!" metinleri — yukarı kayıp solar (~0.8sn). Kamera-aware. */
+function drawFloatTexts(dts) {
+  if (!floatTexts.length) return;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    const f = floatTexts[i];
+    f.life -= 0.025 * dts;                 // ~0.83sn ömür (60fps'de 40 frame)
+    if (f.life <= 0) { floatTexts.splice(i, 1); continue; }
+    const s    = screenFromWorld(f.wx, f.wy);
+    const rise = (1 - f.life) * 34 * camera.scale; // yukarı kayma
+    const yy   = s.y - 22 * camera.scale - rise;
+    ctx.globalAlpha = Math.min(1, f.life * 1.8);
+    ctx.font = 'bold ' + Math.round(15 * camera.scale) + 'px -apple-system, sans-serif';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeText(f.text, s.x, yy);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, s.x, yy);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 // ===== PARTICLES (TAŞINDI — havuzlandı) =====
@@ -1976,6 +2034,7 @@ function startGame() {
   upgradeMenu = null;
   cancelLongPress();
   buildPulses.length = 0;
+  floatTexts.length = 0;
   enemies.length = 0;
   score = 0;
   resetWaves();
@@ -2088,9 +2147,10 @@ function loop(ts) {
     drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
     for (const d of drawables) { if (d.t === 0) drawFood(d.o); else d.o.draw(); }
 
-    // Layer 8: Particles + build pulses
+    // Layer 8: Particles + build pulses + upgrade "Sv X!" metinleri
     drawParticles(dts);
     drawBuildPulses(dts);
+    drawFloatTexts(dts);
 
     // Layer 8.5: Kraliçe hasar flash + hazırlık fazı uyarı/geri sayım
     drawWaveOverlay(dt);
