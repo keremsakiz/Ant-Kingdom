@@ -714,7 +714,7 @@ function drawHUD() {
   const pills = [
     { icon: '🍃', val: String(hudFood)   },
     { icon: '🐜', val: String(hudPop)    },
-    { icon: '🌊', val: String(hudWave)   },
+    { icon: '🌀', val: String(hudWave)   },
     { icon: '⏱',  val: String(hudTime)   },
     { icon: '❤️', val: String(hudQueenHP) },
   ];
@@ -925,8 +925,8 @@ let buildings   = [];
 let radialMenu  = null; // { col, row } — grid hücresi
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
 
-const RADIAL_R  = 58; // ikon yayı yarıçapı (screen px)
-const RADIAL_IR = 22; // ikon daire yarıçapı
+const RADIAL_R  = 80; // ikon yayı yarıçapı (screen px) — komşu daireler arası net boşluk
+const RADIAL_IR = 20; // ikon daire yarıçapı
 
 class Building {
   constructor(type, col, row) {
