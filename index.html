@@ -149,7 +149,12 @@ let foodSpawnTimer = 0; // ms accumulator for periodic food spawn
 const FOOD_MIN_MAP   = 6;   // respawn threshold
 const FOOD_SPAWN_MS  = 3000; // periodic interval ms
 const FOOD_MAX_AGE_MS = 20000; // uncollected food expires after 20s
-const ANT_BIRTH_COST = 10;   // food spent per new worker
+const ANT_BIRTH_COST = 10;   // food spent per new worker (legacy; artık otomatik kullanılmıyor)
+// Tower-defense ekonomisi: yem oyuncuya birikir. Otomatik doğum sadece
+// koloni tabanın altına düşerse devreye giren yavaş+bedava bir "hayatta kalma" mekanizması.
+const ANT_BIRTH_INTERVAL_MS = 12000; // hayatta kalma doğumu denemesi aralığı (12 sn)
+const ANT_MIN_FLOOR = 12;            // bu sayının altına düşerse koloni takviye edilir
+let antBirthTimer = 0;               // ms akümülatörü
 
 // ===== CAMERA =====
 const camera = {
@@ -709,7 +714,7 @@ function drawHUD() {
   const pills = [
     { icon: '🍃', val: String(hudFood)   },
     { icon: '🐜', val: String(hudPop)    },
-    { icon: '🌊', val: String(hudWave)   },
+    { icon: '🌀', val: String(hudWave)   },
     { icon: '⏱',  val: String(hudTime)   },
     { icon: '❤️', val: String(hudQueenHP) },
   ];
@@ -920,8 +925,8 @@ let buildings   = [];
 let radialMenu  = null; // { col, row } — grid hücresi
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
 
-const RADIAL_R  = 58; // ikon yayı yarıçapı (screen px)
-const RADIAL_IR = 22; // ikon daire yarıçapı
+const RADIAL_R  = 80; // ikon yayı yarıçapı (screen px) — komşu daireler arası net boşluk
+const RADIAL_IR = 20; // ikon daire yarıçapı
 
 class Building {
   constructor(type, col, row) {
@@ -1328,6 +1333,7 @@ function startGame() {
   // Reset colony state
   food = 0;
   foodSpawnTimer = 0;
+  antBirthTimer = 0;
   ants.length = 0;
   foods.length = 0;
   particles.length = 0;
@@ -1391,11 +1397,17 @@ function loop(ts) {
     foodSpawnTimer += dt;
     if (foodSpawnTimer >= FOOD_SPAWN_MS) { foodSpawnTimer = 0; spawnFood(); }
 
-    // ── Worker doğumu: her ANT_BIRTH_COST yemde 1 worker ──
-    if (food >= ANT_BIRTH_COST && antCount() < CONFIG.ANT.MAX) {
-      food -= ANT_BIRTH_COST;
-      spawnAnt('worker');
-      sndBorn();
+    // ── Hayatta kalma doğumu: yalnızca koloni tabanın altına düşerse ──
+    // Yem ARTIK otomatik harcanmaz; oyuncuda birikir (bina ekonomisi için).
+    // Sadece ANT_BIRTH_INTERVAL_MS'de bir, karınca sayısı ANT_MIN_FLOOR
+    // altındaysa BEDAVA 1 worker eklenir; böylece koloni asla ölmez.
+    antBirthTimer += dt;
+    if (antBirthTimer >= ANT_BIRTH_INTERVAL_MS) {
+      antBirthTimer = 0;
+      if (antCount() < ANT_MIN_FLOOR && antCount() < CONFIG.ANT.MAX) {
+        spawnAnt('worker');
+        sndBorn();
+      }
     }
 
     // Layer 1: Zemin tile'ları
