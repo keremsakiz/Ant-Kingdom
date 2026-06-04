@@ -787,6 +787,22 @@ function fitText(str, maxW) {
   return s + '…';
 }
 
+/**
+ * Bina butonu ismini maxW'ye TAM sığdır: font'u prefMax→prefMin (px) arasında
+ * küçülterek tam ismi sığdırmaya çalışır; sığarsa o boyutu döndürür. Hiçbiri
+ * sığmazsa (uzun çok-kelimeli isim) en küçük fontta fitText ile ilk kelimeye düşer
+ * — böylece "Mancınık" gibi tek kelimeler "Mancı…" diye çirkin kesilmez. Çağıran
+ * dönen px ile ctx.font'u kurar. Bold, -apple-system varsayılır.
+ */
+function fitLabel(name, maxW, prefMax = 9, prefMin = 7) {
+  for (let px = prefMax; px >= prefMin; px--) {
+    ctx.font = 'bold ' + px + 'px -apple-system, sans-serif';
+    if (ctx.measureText(name).width <= maxW) return { text: name, px };
+  }
+  ctx.font = 'bold ' + prefMin + 'px -apple-system, sans-serif';
+  return { text: fitText(name, maxW), px: prefMin };
+}
+
 function drawHUD() {
   const pad = 8, ph = 34, gap = 5;
   const pills = [
@@ -815,7 +831,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.52)';
   ctx.fillRect(0, H - barH, W, barH);
 
-  const btnW = 44, btnH = 58, btnGap = 6; // 7 bina: 7×44 + 6×6 = 344px → 390px baz ekrana sığar
+  const btnW = 50, btnH = 58, btnGap = 4; // 7 bina: 7×50 + 6×4 = 374px → 390px baz ekrana sığar
   const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
   let bx = Math.round(W / 2 - totalBtnW / 2);
   const by = H - barH + 11;
@@ -837,10 +853,10 @@ function drawHUD() {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
     ctx.fillText(cfg.emoji, cx, by + 15);
-    // İsim ortada — butona sığmazsa kısalt (56px dar)
-    ctx.font = 'bold 9px -apple-system, sans-serif';
+    // İsim ortada — tam sığsın diye fontu küçülterek dene (çirkin "…" kesme olmasın)
+    const lbl = fitLabel(cfg.name, btnW - 6); // fitLabel ctx.font'u kurar
     ctx.fillStyle = afford ? '#ffe8b0' : '#caa080';
-    ctx.fillText(fitText(cfg.name, btnW - 6), cx, by + 33);
+    ctx.fillText(lbl.text, cx, by + 33);
     // Fiyat altta
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.textBaseline = 'alphabetic';
