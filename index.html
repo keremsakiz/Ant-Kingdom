@@ -38,7 +38,10 @@ const CONFIG = {
     barricade: { cost: 90, hp: 120, emoji: '🪨', name: 'Barikat' },
     barracks:  { cost: 150, hp:  80, emoji: '⚔️', name: 'Kışla',       spawnInterval: 15000 },
     tower:     { cost: 240, hp:  60, emoji: '🍄', name: 'Zehir Kulesi', range: 150, cooldown: 2000, poisonDmg: 28 },
-    alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 }
+    alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 },
+    // ranger.range/cooldown/dmg — TEK HEDEF mermi: menzil(world px)/atış periyodu(ms)/mermi hasarı.
+    // effectMul ile range/dmg artar, cooldown azalır (cooldown/eff → daha sık).
+    ranger:    { cost: 180, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
@@ -805,7 +808,7 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.52)';
   ctx.fillRect(0, H - barH, W, barH);
 
-  const btnW = 56, btnH = 58, btnGap = 8;
+  const btnW = 48, btnH = 58, btnGap = 8; // 6 bina: 6×48 + 5×8 = 328px → 390px baz ekrana sığar
   const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
   let bx = Math.round(W / 2 - totalBtnW / 2);
   const by = H - barH + 11;
@@ -1003,12 +1006,13 @@ function spawnFood(col, row, type) {
 }
 
 // ===== BUILDINGS =====
-const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm'];
+const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm', 'ranger'];
 let buildings   = [];
 let radialMenu  = null; // { col, row } — boş tile'a kurma menüsü
 let upgradeMenu = null; // Building referansı — dolu tile'a upgrade balonu
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
 let floatTexts  = [];   // { wx, wy, life, text, color } — upgrade anı yükselen "Sv X!"
+let bullets     = [];   // ranger mermileri { wx, wy, vx, vy, dmg, target } — TEK HEDEF
 
 // Faz 3C: seviye çarpanları. Index = level-1. Hem etki hem maxHP için kullanılır.
 //   sv1 ×1.0, sv2 ×1.4, sv3 ×1.9  (tower hasarı/healer şifası artar, barracks
@@ -1096,6 +1100,7 @@ class Building {
     this.spawnTimer = 0; // barracks
     this.cdTimer    = 0; // tower
     this.healTimer  = 0; // alarm (şifa taşı) periyodik iyileştirme
+    this.shootTimer = 0; // ranger (atış kulesi) periyodik mermi
   }
   /** Seviyeye göre maxHP'yi yeniden hesapla ve canı doldur (kurulunca/yükselince). */
   applyLevel() {
@@ -1167,6 +1172,32 @@ class Building {
           burst(w.x, w.y, '#5aff8a', 6); // bina konumunda yeşil parçacık
         }
       }
+    } else if (this.type === 'ranger') {
+      // ATIŞ KULESİ: tower'dan farklı — AOE değil TEK HEDEF. Menzildeki EN YAKIN
+      // aktif düşmana periyodik mermi atar. Seviye → daha sık (cooldown/eff),
+      // daha uzun menzil (range×eff) ve daha güçlü mermi (dmg×eff).
+      this.shootTimer += dt;
+      if (this.shootTimer >= cfg.cooldown / eff) {
+        this.shootTimer = 0;
+        const w  = worldFromGrid(this.gridX, this.gridY);
+        const r2 = (cfg.range * eff) ** 2;
+        let best = null, bestD = r2;
+        for (const e of enemies) {
+          if (!e.active) continue;
+          const d2 = (e.wx - w.x) ** 2 + (e.wy - w.y) ** 2;
+          if (d2 <= bestD) { bestD = d2; best = e; }
+        }
+        if (best) {
+          const d  = Math.max(1, Math.hypot(best.wx - w.x, best.wy - w.y));
+          const sp = 7; // mermi hızı (world px / 60fps-frame)
+          bullets.push({
+            wx: w.x, wy: w.y,
+            vx: (best.wx - w.x) / d * sp,
+            vy: (best.wy - w.y) / d * sp,
+            dmg: cfg.dmg * eff, target: best
+          });
+        }
+      }
     }
   }
   draw() {
@@ -1235,6 +1266,10 @@ function effectLine(b) {
     case 'tower': {
       const cur = Math.round(cfg.poisonDmg * curM);
       return 'Zehir: ' + (isMax ? cur : cur + ' → ' + Math.round(cfg.poisonDmg * nxtM));
+    }
+    case 'ranger': {
+      const cur = Math.round(cfg.dmg * curM);
+      return 'Atış: ' + (isMax ? cur : cur + ' → ' + Math.round(cfg.dmg * nxtM));
     }
     case 'alarm': {
       const cur = Math.round(cfg.healAmount * curM);
@@ -1423,6 +1458,46 @@ function drawBuildPulses(dts) {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * Ranger mermileri: hedefe doğru uç, ~18px temas → hasar uygula (ölürse killEnemy),
+ * mermiyi sil. Hedef ölmüş/yok olmuşsa mermi de düşer. dts = frame-ölçekli delta.
+ */
+function updateBullets(dts) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const m = bullets[i];
+    const e = m.target;
+    // Hedef yok olduysa (öldü/devre dışı) mermiyi sil
+    if (!e || !e.active) { bullets.splice(i, 1); continue; }
+    m.wx += m.vx * dts;
+    m.wy += m.vy * dts;
+    const dx = e.wx - m.wx, dy = e.wy - m.wy;
+    if (dx * dx + dy * dy <= 18 * 18) { // temas
+      e.hp -= m.dmg;
+      burst(e.wx, e.wy, '#ffd24a', 4);
+      if (e.hp <= 0) killEnemy(e);
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+/** Mermileri küçük sarı/turuncu çizgi olarak çiz (kamera-aware, depth-sort yok). */
+function drawBullets() {
+  if (!bullets.length) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffd24a';
+  for (const m of bullets) {
+    const s = screenFromWorld(m.wx, m.wy);
+    // kısa kuyruk (hız yönünün tersi) → mermi hissi, her-frame ağır iş yok
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(s.x - m.vx * camera.scale, s.y - m.vy * camera.scale);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** Upgrade anı "Sv X!" metinleri — yukarı kayıp solar (~0.8sn). Kamera-aware. */
@@ -2035,6 +2110,7 @@ function startGame() {
   cancelLongPress();
   buildPulses.length = 0;
   floatTexts.length = 0;
+  bullets.length = 0;
   enemies.length = 0;
   score = 0;
   resetWaves();
@@ -2123,6 +2199,8 @@ function loop(ts) {
     // Bina etkileri (Faz 3B) — düşman update'inden sonra; barracks üretir,
     // tower zehirler, alarm pulslar. Binalar pool değil, hepsi "var". dt = ms.
     for (const b of buildings) b.update(dt);
+    // Ranger mermileri — bina update'inden sonra (atış bu frame eklenmiş olabilir).
+    updateBullets(dts);
 
     // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
     // ONE consistent depth anchor for every object: its world-Y center (wy). Food
@@ -2150,6 +2228,7 @@ function loop(ts) {
     // Layer 8: Particles + build pulses + upgrade "Sv X!" metinleri
     drawParticles(dts);
     drawBuildPulses(dts);
+    drawBullets();
     drawFloatTexts(dts);
 
     // Layer 8.5: Kraliçe hasar flash + hazırlık fazı uyarı/geri sayım
