@@ -21,31 +21,31 @@ const CONFIG = {
   CAMERA:    { MIN_ZOOM: 0.55, MAX_ZOOM: 2.5, START_ZOOM: 1.0 },
   ANT:       { BASE_SPEED: 1.7, SENSE_RANGE: 110, START_WORKERS: 10, START_SOLDIERS: 3, START_CARRIERS: 2, MAX: 80,
                CARRIER_SPEED: 0.6, SOLDIER_SCALE: 1.3, GUARD_RADIUS: 80, SPEED_BOOST: 1.7,
-               SOLDIER_DETECT_RANGE: 260, SOLDIER_RANGE: 45, SOLDIER_DPS: 10 },
+               SOLDIER_DETECT_RANGE: 260, SOLDIER_RANGE: 45, SOLDIER_DPS: 6 },
   PHEROMONE: { CELL: 14, MAX: 100, DECAY: 0.992, DEPOSIT: 3 },
-  WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 3, ENEMY_PER_WAVE: 2, HP_GROWTH: 1.15, BONUS_PER_WAVE: 50 },
+  WAVE:      { DURATION_MS: 60000, PREP_MS: 15000, BASE_ENEMIES: 6, ENEMY_PER_WAVE: 3, HP_GROWTH: 1.22, BONUS_PER_WAVE: 50 },
   QUEEN:     { MAX_HP: 100 },
-  POOL:      { ANTS: 200, ENEMIES: 100, PARTICLES: 400 },
+  POOL:      { ANTS: 200, ENEMIES: 150, PARTICLES: 400 },
   // Faz 3B: her binanın etki parametreleri CONFIG'de (magic number yok).
   //  moat.slowFactor     — tile üstündeki düşmanın o frame'deki hız çarpanı
   //  barracks.spawnInterval — ms; bu sürede bir soldier üretir
   //  tower.range/cooldown/poisonDmg — AOE zehir menzili(world px)/periyot(ms)/hasar
   //  alarm.range         — soldier'ları çeken/uyaran etki yarıçapı (world px)
   BUILDINGS: {
-    moat:      { cost: 20, hp:  50, emoji: '🌊', slowFactor: 0.4 },
-    barricade: { cost: 30, hp: 120, emoji: '🪨' },
-    barracks:  { cost: 50, hp:  80, emoji: '⚔️', spawnInterval: 15000 },
-    tower:     { cost: 80, hp:  60, emoji: '🍄', range: 90, cooldown: 3000, poisonDmg: 20 },
-    alarm:     { cost: 25, hp:  40, emoji: '🔔', range: 130 }
+    moat:      { cost: 60, hp:  50, emoji: '🌊', slowFactor: 0.4 },
+    barricade: { cost: 90, hp: 120, emoji: '🪨' },
+    barracks:  { cost: 150, hp:  80, emoji: '⚔️', spawnInterval: 15000 },
+    tower:     { cost: 240, hp:  60, emoji: '🍄', range: 150, cooldown: 2000, poisonDmg: 28 },
+    alarm:     { cost: 75, hp:  40, emoji: '🔔', range: 130 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
   ENEMIES: {
-    spider:     { hp: 15, speed: 1.6, queenDmg:  5, reward:  8, unlockWave:  1, emoji: '🕷' },
-    ladybug:    { hp: 30, speed: 1.0, queenDmg:  8, reward: 12, unlockWave:  1, emoji: '🐞' },
-    dungbeetle: { hp: 70, speed: 0.6, queenDmg: 15, reward: 25, unlockWave:  5, emoji: '🪲' },
-    bird:       { hp: 25, speed: 1.4, queenDmg: 12, reward: 20, unlockWave: 10, emoji: '🐦' },
-    enemyant:   { hp: 40, speed: 1.1, queenDmg: 10, reward: 18, unlockWave: 20, emoji: '🐜' }
+    spider:     { hp: 25, speed: 1.6, queenDmg:  5, reward:  8, unlockWave:  1, emoji: '🕷' },
+    ladybug:    { hp: 55, speed: 1.0, queenDmg:  8, reward: 12, unlockWave:  1, emoji: '🐞' },
+    dungbeetle: { hp: 140, speed: 0.6, queenDmg: 15, reward: 25, unlockWave:  5, emoji: '🪲' },
+    bird:       { hp: 45, speed: 1.4, queenDmg: 12, reward: 20, unlockWave: 10, emoji: '🐦' },
+    enemyant:   { hp: 80, speed: 1.1, queenDmg: 10, reward: 18, unlockWave: 20, emoji: '🐜' }
   }
 };
 
