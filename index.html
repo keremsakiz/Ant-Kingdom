@@ -30,13 +30,13 @@ const CONFIG = {
   //  moat.slowFactor     — tile üstündeki düşmanın o frame'deki hız çarpanı
   //  barracks.spawnInterval — ms; bu sürede bir soldier üretir
   //  tower.range/cooldown/poisonDmg — AOE zehir menzili(world px)/periyot(ms)/hasar
-  //  alarm.range         — soldier'ları çeken/uyaran etki yarıçapı (world px)
+  //  alarm (ŞİFA TAŞI) — healRange(yuvaya yakınlık, world px)/healInterval(ms)/healAmount(HP)
   BUILDINGS: {
     moat:      { cost: 60, hp:  50, emoji: '🌊', slowFactor: 0.4 },
     barricade: { cost: 90, hp: 120, emoji: '🪨' },
     barracks:  { cost: 150, hp:  80, emoji: '⚔️', spawnInterval: 15000 },
     tower:     { cost: 240, hp:  60, emoji: '🍄', range: 150, cooldown: 2000, poisonDmg: 28 },
-    alarm:     { cost: 75, hp:  40, emoji: '🔔', range: 130 }
+    alarm:     { cost: 75, hp:  40, emoji: '💚', healRange: 130, healInterval: 15000, healAmount: 5 }
   },
   // Faz 2A düşmanları — BUILDINGS ile ayni stil (sabit alan tablosu).
   // unlockWave: dalga bu degere ulasinca tip spawn havuzuna girer.
@@ -981,28 +981,6 @@ function isBarricadeTile(col, row) {
   return false;
 }
 
-/**
- * Alarm yönlendirmesi: soldier (ax,ay) bir alarmın menzilindeyse VE o alarmın
- * menzilinde aktif düşman varsa, o düşmanı (soldier'a en yakın olanı) döndür.
- * Aksi halde null → soldier normal hedef seçimine devam eder.
- */
-function alarmTargetFor(ax, ay) {
-  let target = null, bestD = Infinity;
-  const ar = CONFIG.BUILDINGS.alarm.range, ar2 = ar * ar;
-  for (const b of buildings) {
-    if (b.type !== 'alarm') continue;
-    const w = worldFromGrid(b.gridX, b.gridY);
-    if ((ax - w.x) ** 2 + (ay - w.y) ** 2 > ar2) continue; // soldier menzil dışı
-    for (const e of enemies) {
-      if (!e.active) continue;
-      if ((e.wx - w.x) ** 2 + (e.wy - w.y) ** 2 > ar2) continue; // düşman menzil dışı
-      const sd2 = (e.wx - ax) ** 2 + (e.wy - ay) ** 2;
-      if (sd2 < bestD) { bestD = sd2; target = e; }
-    }
-  }
-  return target;
-}
-
 class Building {
   constructor(type, col, row) {
     this.type  = type;
@@ -1015,7 +993,7 @@ class Building {
     // Faz 3B etki zamanlayıcıları (ms) — kullanılmayan binada da zararsız durur.
     this.spawnTimer = 0; // barracks
     this.cdTimer    = 0; // tower
-    this.pulseTimer = 0; // alarm görsel pulsu
+    this.healTimer  = 0; // alarm (şifa taşı) periyodik iyileştirme
   }
   /**
    * Bina etkisi (Faz 3B). dt = ms (loop'taki ham delta). Tüm etkiler periyot
@@ -1060,21 +1038,19 @@ class Building {
         if (hit) buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#a050ff', maxR: cfg.range });
       }
     } else if (this.type === 'alarm') {
-      // Menzilde düşman varken periyodik uyarı halkası (görsel)
-      const w = worldFromGrid(this.gridX, this.gridY);
-      const ar2 = cfg.range * cfg.range;
-      let ringing = false;
-      for (const e of enemies) {
-        if (e.active && (e.wx - w.x) ** 2 + (e.wy - w.y) ** 2 <= ar2) { ringing = true; break; }
-      }
-      if (ringing) {
-        this.pulseTimer += dt;
-        if (this.pulseTimer >= 700) {
-          this.pulseTimer = 0;
-          buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#ffd24a', maxR: cfg.range });
+      // ŞİFA TAŞI: yuvaya healRange içindeyse periyodik olarak kraliçe HP'sini
+      // healAmount kadar iyileştirir (MAX_HP'yi aşmadan). Yuvadan uzaktaysa etkisiz
+      // → oyuncu stratejik olarak yuvaya yakın kurmak zorunda. (Bina onarımı Faz 2B.)
+      this.healTimer += dt;
+      if (this.healTimer >= cfg.healInterval) {
+        this.healTimer = 0;
+        const w = worldFromGrid(this.gridX, this.gridY);
+        const inRange = (w.x - nestW.x) ** 2 + (w.y - nestW.y) ** 2 <= cfg.healRange * cfg.healRange;
+        if (inRange && hudQueenHP < CONFIG.QUEEN.MAX_HP) {
+          hudQueenHP = Math.min(CONFIG.QUEEN.MAX_HP, hudQueenHP + cfg.healAmount);
+          buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#5aff8a', maxR: 50 }); // yuvada şifa halkası
+          burst(w.x, w.y, '#5aff8a', 6); // bina konumunda yeşil parçacık
         }
-      } else {
-        this.pulseTimer = 0;
       }
     }
   }
@@ -1302,11 +1278,6 @@ class Ant {
         if (score < bestScore) { bestScore = score; best = e; }
       }
     }
-
-    // Alarm önceliği: bu soldier bir alarmın menzilindeyse VE o menzilde düşman
-    // varsa, leash'ten bağımsız o düşmana yönelir (savunmayı alarm bölgesine çeker).
-    const alarmT = alarmTargetFor(this.wx, this.wy);
-    if (alarmT) best = alarmT;
 
     if (best) {
       _enemyLoad.set(best.uid, (_enemyLoad.get(best.uid) || 0) + 1); // bu hedefe atandık
