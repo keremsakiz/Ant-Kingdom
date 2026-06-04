@@ -1095,8 +1095,18 @@ function canPlaceTypeAt(type, col, row) {
   return true;
 }
 
-const RADIAL_R  = 94; // ikon yayı yarıçapı (screen px) — 7 ikon yarım dairede çakışmasın
-const RADIAL_IR = 19; // ikon daire yarıçapı
+const RADIAL_R  = 108; // ikon yayı yarıçapı (screen px) — 7 ikon yarım dairede rahat aralıkla (komşu mesafe ~56px > ikon çapı 38px)
+const RADIAL_IR = 19;  // ikon daire yarıçapı
+
+/**
+ * Radyal menü i. ikonunun ekran konumu (yarım daire, -π..0 üzerinde n ikon
+ * eşit yayılır). ÇİZİM (drawRadialMenu) ve HİT-TEST (radialHit) bu TEK formülü
+ * kullanır → görsel ile tıklama asla kaymaz. (x,y) = menü merkezi (tile ekran konumu).
+ */
+function radialIconPos(x, y, i, n) {
+  const angle = -Math.PI + i * (Math.PI / (n - 1));
+  return { ix: x + Math.cos(angle) * RADIAL_R, iy: y + Math.sin(angle) * RADIAL_R };
+}
 
 // ── Bina etki yardımcıları (Faz 3B) ──
 // Binalar az (~birkaç) olduğu için her-frame düz tarama yeterli; ekstra yapı/tahsis yok.
@@ -1505,9 +1515,7 @@ function drawRadialMenu() {
   const n = BUILDING_TYPES.length;
   ctx.save();
   for (let i = 0; i < n; i++) {
-    const angle  = -Math.PI + i * (Math.PI / (n - 1));
-    const ix     = x + Math.cos(angle) * RADIAL_R;
-    const iy     = y + Math.sin(angle) * RADIAL_R;
+    const { ix, iy } = radialIconPos(x, y, i, n);
     const type   = BUILDING_TYPES[i];
     const cfg    = CONFIG.BUILDINGS[type];
     // Kurulabilirlik üç koşul: yem + limit (canBuild) + konum izni (yuva-çevresi).
@@ -1548,9 +1556,7 @@ function radialHit(sx, sy) {
   const { x, y } = toScreen(radialMenu.col, radialMenu.row);
   const n = BUILDING_TYPES.length;
   for (let i = 0; i < n; i++) {
-    const angle = -Math.PI + i * (Math.PI / (n - 1));
-    const ix    = x + Math.cos(angle) * RADIAL_R;
-    const iy    = y + Math.sin(angle) * RADIAL_R;
+    const { ix, iy } = radialIconPos(x, y, i, n);
     if (Math.hypot(sx - ix, sy - iy) <= RADIAL_IR) return BUILDING_TYPES[i];
   }
   return null;
