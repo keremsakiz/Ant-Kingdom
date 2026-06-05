@@ -750,8 +750,21 @@ function drawGrid() {
         }
       }
 
-      // Nest center tile: entrance + rings
+      // Nest ortak toprak doku: 3×3 alan tek "yuva tarlası" gibi birleşsin. AYRI
+      // blok — mevcut nest "doku yok" akışını bozmaz; sadece hafif kahve serpme.
+      // Deterministik (tile c,r seed'i → titremez). Köşe/kenar/merkez tüm nest tile'a.
+      if (tile.type === 'nest') {
+        for (let i = 0; i < 3; i++) {
+          const dx = (((seed * (i + 1) * 23) % 100) - 50) / 100 * hw * 0.62;
+          const dy = (((seed * (i + 1) * 29) % 100) - 50) / 100 * hh * 0.62;
+          ctx.fillStyle = (i % 2 === 0) ? 'rgba(120,82,44,0.30)' : 'rgba(20,12,5,0.30)';
+          ctx.beginPath(); ctx.arc(x + dx, y + dy, 1.2 * s, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // Nest center tile: patikalar (höyüklerin ALTINDA) + ana höyük/giriş
       if (tile.type === 'nest' && c === NEST_COL && r === NEST_ROW) {
+        drawNestPaths(x, y, hw, hh, s);    // ÖNCE patikalar → höyüklerin altında kalır
         drawNestEntrance(x, y, hw, hh, s);
       }
       // Nest 3×3 KÖŞE tile'ları: küçük ikincil giriş delikleri (heybetli yuva).
@@ -829,6 +842,34 @@ function drawNestHole(x, y, hw, hh, s) {
   // Koyu giriş deliği (höyüğün tepe-ortasında)
   ctx.fillStyle = '#0e0905';
   ctx.beginPath(); ctx.ellipse(x, y - H * 0.4, hw * 0.16, hh * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+/**
+ * Merkez höyükten dört köşe yuvaya hafif kavisli toprak patikalar — "bağlı koloni"
+ * hissi. Merkez tile'da drawNestEntrance'DEN ÖNCE çağrılır ki höyüklerin ALTINDA
+ * kalsın. İzometrik komşu ofseti: dx=(dc-dr)*hw, dy=(dc+dr)*hh (toScreen türevi).
+ * quadraticCurveTo ile küçük organik sapma; uçlar höyük tabanına biraz kısa biter.
+ */
+function drawNestPaths(x, y, hw, hh, s) {
+  const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+  ctx.save();
+  ctx.strokeStyle = 'rgba(138,94,52,0.6)'; // açık toprak tonu, zemine gömülü opaklık
+  ctx.lineWidth = hw * 0.18;               // hw zaten s-ölçekli → zoom uyumlu
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let k = 0; k < corners.length; k++) {
+    const dc = corners[k][0], dr = corners[k][1];
+    const tx = x + (dc - dr) * hw, ty = y + (dc + dr) * hh; // köşe yuva merkezi
+    const ex = x + (tx - x) * 0.82, ey = y + (ty - y) * 0.82; // höyüğe gömülsün → kısa bit
+    const vx = ex - x, vy = ey - y;
+    const sign = (dc === dr) ? 1 : -1;        // köşeye göre kavis yönü değişsin (organik)
+    const cx = (x + ex) / 2 - vy * 0.16 * sign; // orta nokta + perpendiküler sapma
+    const cy = (y + ey) / 2 + vx * 0.16 * sign;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(cx, cy, ex, ey);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ===== HUD (PLAYING) =====
