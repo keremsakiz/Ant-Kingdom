@@ -1496,12 +1496,12 @@ function nestUpgradeCost() { return 80 + nestUpgradeCount * 40; }
  *  Bina menüsündeki upgradeMenuLayout ile AYNI yaklaşım (çizim + hit-test tek kaynak). */
 function nestMenuLayout() {
   const sc = screenFromWorld(nestW.x, nestW.y);
-  const w = 168, h = 92;
+  const w = 168, h = 114;                 // bina upgrade menüsüyle AYNI ölçüler
   let bx = sc.x - w / 2;
   let by = sc.y - 70 - h;                 // yuvanın üstünde
   bx = Math.max(6, Math.min(W - w - 6, bx));
   by = Math.max(6, by);
-  const btn = { x: bx + 12, y: by + h - 36, w: w - 24, h: 28 };
+  const btn = { x: bx + 12, y: by + h - 32, w: w - 24, h: 26 };
   return { bx, by, w, h, btn };
 }
 
@@ -1521,10 +1521,11 @@ function doNestUpgrade() {
   CONFIG.QUEEN.MAX_HP += 50;
   hudQueenHP += 50;                        // mevcut HP de artsın → anında fayda
   nestUpgradeCount++;
-  // Yuvanın üstünde yükselip solan "+50 ❤️" metni (doUpgrade'deki floatTexts formatı).
+  // Yuvanın üstünde yükselip solan "+50 ❤️" metni (doUpgrade'deki floatTexts formatı). KALIR.
   floatTexts.push({ wx: nestW.x, wy: nestW.y, life: 1.0, text: '+50 ❤️', color: '#7fff8a' });
-  buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#5aff8a', maxR: 54 });
-  burst(nestW.x, nestW.y, '#5aff8a', 14);
+  // HP temalı KIRMIZI/PEMBE halka pulsu — şifa taşının yeşil pulsundan (#5aff8a) ayrılsın.
+  buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#ff5a7a', maxR: 56 });
+  burst(nestW.x, nestW.y, '#ff5a7a', 14);
   sndPower();
 }
 
@@ -1538,29 +1539,35 @@ function drawNestMenu() {
   const L = nestMenuLayout();
   const cost = nestUpgradeCost();
   const afford = food >= cost;
-  const cx = L.bx + L.w / 2;
   ctx.save();
-  // Panel (upgrade balonuyla aynı stil)
+  // Panel — drawUpgradeMenu ile AYNI değerler (renk/opaklık/yuvarlaklık/çizgi)
   ctx.fillStyle = 'rgba(24,18,8,0.95)';
   rrect(L.bx, L.by, L.w, L.h, 10); ctx.fill();
   ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
-  // Başlık: "Yuva  ❤️ {hp}/{max}"
+  const cx = L.bx + L.w / 2;
+  // Başlık: emoji + isim (bina menüsündeki "emoji + name" satırıyla aynı font/konum)
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = 'bold 13px -apple-system, sans-serif';
   ctx.fillStyle = '#fff';
-  ctx.fillText('Yuva  ❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, cx, L.by + 22);
-  // Yükselt butonu (afford → yeşil, değilse soluk — bina menüsüyle aynı renkler)
+  ctx.fillText('👑 Yuva', cx, L.by + 20);
+  // HP satırı (bina "Sv X/3 ❤️ hp/max" satırıyla aynı font/renk/konum)
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillStyle = '#ffe08f';
+  ctx.fillText('❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, cx, L.by + 38);
+  // Etki satırı: mevcut → yükseltince (bina effectLine satırıyla aynı font/renk/konum)
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillStyle = '#9fe89f';
+  ctx.fillText('Max HP: ' + CONFIG.QUEEN.MAX_HP + ' → ' + (CONFIG.QUEEN.MAX_HP + 50), cx, L.by + 55);
+  // Yükselt butonu — drawUpgradeMenu butonuyla AYNI stil + afford renklendirmesi
   ctx.globalAlpha = afford ? 1 : 0.45;
   ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
   rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, 7); ctx.fill();
   ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
-  ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
   ctx.font = 'bold 12px -apple-system, sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.fillText('⬆ Yükselt (+50 ❤️)', cx, L.btn.y + L.btn.h / 2 - 5);
-  ctx.font = 'bold 11px -apple-system, sans-serif';
-  ctx.fillText(cost + ' 🍃', cx, L.btn.y + L.btn.h / 2 + 9);
+  ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
+  ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
   ctx.globalAlpha = 1;
   ctx.restore();
 }
