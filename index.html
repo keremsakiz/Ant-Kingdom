@@ -1124,7 +1124,7 @@ let bullets     = [];   // ranger mermileri { wx, wy, vx, vy, dmg, target } — 
 // Faz 3C: seviye çarpanları. Index = level-1. Hem etki hem maxHP için kullanılır.
 //   sv1 ×1.0, sv2 ×1.4, sv3 ×1.9  (tower hasarı/healer şifası artar, barracks
 //   intervali / çarpan → daha sık, maxHP × çarpan).
-const LVL_MUL = [1.0, 1.4, 1.9];
+const LVL_MUL = [1.0, 1.4, 1.9, 2.3, 2.6, 2.9];
 
 // Faz 3C: kalıcı seviye görseli (METİN YOK — renk + boyut). Index = level-1.
 //   sv1 nötr (halka yok), sv2 gümüş + %12 büyük, sv3 altın + %25 büyük.
@@ -1132,15 +1132,18 @@ const LVL_MUL = [1.0, 1.4, 1.9];
 const LVL_TIER = [
   { color: '#cd7f32', scale: 1.00, ring: false, glowA: 0.00 }, // bronz/nötr
   { color: '#c0c0c0', scale: 1.12, ring: true,  glowA: 0.16 }, // gümüş
-  { color: '#ffd700', scale: 1.25, ring: true,  glowA: 0.24 }  // altın
+  { color: '#ffd700', scale: 1.25, ring: true,  glowA: 0.24 }, // altın
+  { color: '#cd7f32', scale: 1.32, ring: true,  glowA: 0.30 }, // sv4 bronz parlak
+  { color: '#e8e8e8', scale: 1.40, ring: true,  glowA: 0.38 }, // sv5 gümüş güçlü
+  { color: '#ffdf33', scale: 1.50, ring: true,  glowA: 0.48 }  // sv6 altın güçlü
 ];
 
-/** type binasının toLevel seviyesine yükseltme maliyeti (sv2 = ×1.5, sv3 = ×2.5). */
+/** type binasının toLevel seviyesine yükseltme maliyeti (tablo: sv2..sv6). */
 function upgradeCostFor(type, toLevel) {
   const base = CONFIG.BUILDINGS[type].cost;
-  if (toLevel === 2) return Math.round(base * 1.5);
-  if (toLevel === 3) return Math.round(base * 2.5);
-  return 0;
+  const MUL = { 2: 1.5, 3: 2.5, 4: 4, 5: 6, 6: 8.5 };
+  const m = MUL[toLevel];
+  return m ? Math.round(base * m) : 0;
 }
 
 /** Binaya bugüne dek yatırılan toplam yem (temel cost + ulaşılan seviye upgrade'leri). */
