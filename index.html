@@ -1130,12 +1130,12 @@ const LVL_MUL = [1.0, 1.4, 1.9, 2.3, 2.6, 2.9];
 //   sv1 nötr (halka yok), sv2 gümüş + %12 büyük, sv3 altın + %25 büyük.
 //   ring=arka hâle/halka çiz; scale=emoji drawImage ölçeği; glowA=hâle dolgu alfası.
 const LVL_TIER = [
-  { color: '#cd7f32', scale: 1.00, ring: false, glowA: 0.00 }, // bronz/nötr
-  { color: '#c0c0c0', scale: 1.12, ring: true,  glowA: 0.16 }, // gümüş
-  { color: '#ffd700', scale: 1.25, ring: true,  glowA: 0.24 }, // altın
-  { color: '#cd7f32', scale: 1.32, ring: true,  glowA: 0.30 }, // sv4 bronz parlak
-  { color: '#e8e8e8', scale: 1.40, ring: true,  glowA: 0.38 }, // sv5 gümüş güçlü
-  { color: '#ffdf33', scale: 1.50, ring: true,  glowA: 0.48 }  // sv6 altın güçlü
+  { color: '#cd7f32', scale: 1.00, ring: false, glowA: 0.00 }, // sv1 bronz
+  { color: '#c0c0c0', scale: 1.12, ring: true,  glowA: 0.18 }, // sv2 gümüş
+  { color: '#ffd700', scale: 1.24, ring: true,  glowA: 0.26 }, // sv3 altın
+  { color: '#1fd6c4', scale: 1.36, ring: true,  glowA: 0.42 }, // sv4 turkuaz
+  { color: '#a855f7', scale: 1.48, ring: true,  glowA: 0.55 }, // sv5 mor
+  { color: '#ff5a3c', scale: 1.62, ring: true,  glowA: 0.70 }  // sv6 kızıl-altın
 ];
 
 /** type binasının toLevel seviyesine yükseltme maliyeti (tablo: sv2..sv6). */
@@ -1408,6 +1408,16 @@ class Building {
     // Kalıcı SEVİYE GÖRSELİ (metin yok): sv2 gümüş / sv3 altın hâle+halka + büyütme.
     // Ucuz: tek dolu daire + tek stroke (gradient yok) → çok binada da hafif.
     const tier = LVL_TIER[this.level - 1];
+    // sv4+ : nabız gibi atan dış parıltı halkası
+    if (this.level >= 4) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 350 + (this.gridX + this.gridY));
+      const gr = spr.size * 0.40 * tier.scale * (1.35 + 0.15 * pulse);
+      ctx.save();
+      ctx.globalAlpha = tier.glowA * 0.45 * (0.6 + 0.4 * pulse);
+      ctx.fillStyle = tier.color;
+      ctx.beginPath(); ctx.arc(x, cy, gr, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (tier.ring) {
       const rr = spr.size * 0.40 * tier.scale;
       ctx.save();
@@ -1553,7 +1563,7 @@ function drawUpgradeMenu() {
   ctx.restore();
 }
 
-/** Yükselt butonu vuruldu mu? (sv3 veya yem yetersizse null) */
+/** Yükselt butonu vuruldu mu? (sv6 veya yem yetersizse null) */
 function upgradeBtnHit(x, y) {
   if (!upgradeMenu || upgradeMenu.level >= 6) return false;
   const cost = upgradeCostFor(upgradeMenu.type, upgradeMenu.level + 1);
@@ -1624,7 +1634,7 @@ function drawNestMenu() {
   ctx.font = 'bold 13px -apple-system, sans-serif';
   ctx.fillStyle = '#fff';
   ctx.fillText('👑 Yuva', cx, L.by + 20);
-  // HP satırı (bina "Sv X/3 ❤️ hp/max" satırıyla aynı font/renk/konum)
+  // HP satırı (bina "Sv X/6 ❤️ hp/max" satırıyla aynı font/renk/konum)
   ctx.font = '11px -apple-system, sans-serif';
   ctx.fillStyle = '#ffe08f';
   ctx.fillText('❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, cx, L.by + 38);
