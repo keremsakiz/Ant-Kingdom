@@ -762,9 +762,8 @@ function drawGrid() {
         }
       }
 
-      // Nest center tile: patikalar (höyüklerin ALTINDA) + ana höyük/giriş
+      // Nest center tile: ana höyük/giriş
       if (tile.type === 'nest' && c === NEST_COL && r === NEST_ROW) {
-        drawNestPaths(x, y, hw, hh, s);    // ÖNCE patikalar → höyüklerin altında kalır
         drawNestEntrance(x, y, hw, hh, s);
       }
       // Nest 3×3 KÖŞE tile'ları: küçük ikincil giriş delikleri (heybetli yuva).
@@ -842,37 +841,6 @@ function drawNestHole(x, y, hw, hh, s) {
   // Koyu giriş deliği (höyüğün tepe-ortasında)
   ctx.fillStyle = '#0e0905';
   ctx.beginPath(); ctx.ellipse(x, y - H * 0.4, hw * 0.16, hh * 0.16, 0, 0, Math.PI * 2); ctx.fill();
-}
-
-/**
- * Merkez höyükten dört köşe yuvaya hafif kavisli toprak patikalar — "bağlı koloni"
- * hissi. Merkez tile'da drawNestEntrance'DEN ÖNCE çağrılır ki höyüklerin ALTINDA
- * kalsın. İzometrik komşu ofseti: dx=(dc-dr)*hw, dy=(dc+dr)*hh (toScreen türevi).
- * quadraticCurveTo ile küçük organik sapma; uçlar höyük tabanına biraz kısa biter.
- */
-function drawNestPaths(x, y, hw, hh, s) {
-  const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
-  ctx.save();
-  ctx.strokeStyle = 'rgba(138,94,52,0.88)'; // açık toprak tonu, belirgin (zoom'suz görünsün)
-  ctx.lineWidth = hw * 0.22;                // hw zaten s-ölçekli → zoom uyumlu, biraz kalın
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let k = 0; k < corners.length; k++) {
-    const dc = corners[k][0], dr = corners[k][1];
-    const tx = x + (dc - dr) * hw, ty = y + (dc + dr) * hh; // köşe yuva merkezi
-    // İki uç da höyük tabanlarına gömülü: merkezden %20'de başla, köşe deliğe
-    // VARMADAN %70'te bitir (deliğin içinden geçmesin/ortadan görünmesin).
-    const sx = x + (tx - x) * 0.20, sy = y + (ty - y) * 0.20;
-    const ex = x + (tx - x) * 0.70, ey = y + (ty - y) * 0.70;
-    const vx = ex - sx, vy = ey - sy;
-    const sign = (dc === dr) ? 1 : -1;        // köşeye göre kavis yönü değişsin (organik)
-    const cx = (sx + ex) / 2 - vy * 0.10 * sign; // orta nokta + hafif perpendiküler sapma
-    const cy = (sy + ey) / 2 + vx * 0.10 * sign;
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.quadraticCurveTo(cx, cy, ex, ey);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 // ===== HUD (PLAYING) =====
