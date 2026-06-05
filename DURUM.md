@@ -54,15 +54,21 @@
 - **Yuva-çevresi kısıtı (SADECE ranger)**: `canPlaceTypeAt` → `nearNest`, Chebyshev mesafe ≤ **NEAR_NEST_R = 3** olan tile'lara kurulabilir.
 - `canBuild`: yeterli `food` VAR **ve** (maxCount yok ya da o tipten limit dolmadı).
 
-### Upgrade sistemi (Faz 3C)
-- **LVL_MUL = [1.0, 1.4, 1.9]** → **3 seviye** (sv1/sv2/sv3, MAX = 3).
+### Upgrade sistemi (Faz 3C + Faz3B 3→6)
+- **LVL_MUL = [1.0, 1.4, 1.9, 2.3, 2.6, 2.9]** → **6 seviye** (sv1..sv6, MAX = 6).
 - `applyLevel()`: maxHP = `hp × LVL_MUL[lvl-1]`, can dolar. `effectMul()` = LVL_MUL (tower/healer/barracks/moat etkisi seviyeyle ölçeklenir).
-- **upgradeCostFor**: sv2 = base × **1.5**, sv3 = base × **2.5** (yuvarlanmış).
-- Upgrade balonu: her bina için **"şu an → yükseltince"** etki satırı (sv3'te sadece mevcut değer, "MAX").
-- **Seviye görseli** (LVL_TIER, metin yok — renk + boyut + halka):
-  - sv1: bronz/nötr, scale 1.00, halka yok
-  - sv2: **gümüş** #c0c0c0, scale 1.12, halka + glow 0.16
-  - sv3: **altın** #ffd700, scale 1.25, halka + glow 0.24
+- **upgradeCostFor**: artık tablo `MUL = {2:1.5, 3:2.5, 4:4, 5:6, 6:8.5}` → base × çarpan (yuvarlanmış). Tablo dışı seviye = 0.
+- Upgrade balonu: her bina için **"şu an → yükseltince"** etki satırı (sv6'da sadece mevcut değer, "MAX"). Etiket **"Sv X/6"**.
+- **Beş seviye-tavanı kontrolü 3→6 yükseltildi**: `effectLine` isMax (`lvl >= 6`), drawUpgradeMenu "/6" etiketi, drawUpgradeMenu MAX kapısı (`b.level >= 6`), `upgradeBtnHit` (`>= 6`), `doUpgrade` guard (`>= 6`).
+- **Seviye görseli** (LVL_TIER, metin yok — renk + boyut + halka). sv1-3 metal, sv4-6 enerji renkleri (daha güçlü glow):
+  - sv1: bronz #cd7f32, scale 1.00, halka yok, glow 0.00
+  - sv2: **gümüş** #c0c0c0, scale 1.12, halka + glow 0.18
+  - sv3: **altın** #ffd700, scale 1.24, halka + glow 0.26
+  - sv4: **turkuaz** #1fd6c4, scale 1.36, halka + glow 0.42
+  - sv5: **mor** #a855f7, scale 1.48, halka + glow 0.55
+  - sv6: **kızıl-altın** #ff5a3c, scale 1.62, halka + glow 0.70
+- **sv4+ nabız parıltısı**: bina draw bloğunda `this.level >= 4` için, `performance.now()` + `(gridX+gridY)` faz kaymasıyla nabız gibi atan dış parıltı halkası (her bina ayrı fazda).
+- **Mermi rengi seviyeye göre**: ranger/catapult mermileri yeni `lvl` alanı taşır; `drawBullets` rengi `LVL_TIER[lvl-1].color`'dan alır (lvl yoksa eski sabit renkler #c8783c / #ffd24a). Mancınık güllesi hep kalın, kalınlık `6 + (lvl-1)*0.7` ile seviyeyle hafif artar; ranger sabit 3.
 - **Long-press %75 yıkma**: dolu tile'da ~**500ms** (LONG_PRESS_MS) basılı tutunca bina yıkılır, `investedTotal × 0.75` yem **iade** edilir (sürükleme iptal eder).
 
 ### Healer sınırı (alarmCanHeal)
@@ -99,35 +105,41 @@
 ## 3. SON COMMIT'LER
 
 ```
+a5e27a8 Faz3B+: mermi rengi seviyeye göre + mancınık kalınlığı seviyeyle artar
+4c70ec8 Faz3B P3: bina seviye görselleri (renk şeması + sv4+ nabız parıltı)
+5ad98ba Faz3B P2: bina seviye tavanı 3→6
+4b7d2e3 Faz3B P1: bina seviye verisi 3→6 (LVL_MUL, LVL_TIER, upgradeCostFor)
+4c62d6f docs: DURUM.md — yuva HP upgrade + görseli tamamlandı, sıradaki B
 9cdf812 revert: yuva patikaları kaldırıldı — ortak doku korundu
 80c508a fix: yuva patikaları uçları kısaltıldı + görünürlük artırıldı
 b550ffd polish: yuva patikaları + ortak toprak doku — bağlı koloni hissi
 f7b4dfa polish: yuva köşelerine ikincil giriş delikleri — daha heybetli yuva
 1e03161 polish: yuva girişi kubbe/höyük görünümüne çevrildi
-eb3f62f polish: yuva menüsü bina menüsü stiliyle uyumlu + yükseltme pulsu
-368c406 feat: yuva HP upgrade — sınırsız +50, artan maliyet 80+40n
-3f820e0 feat: yuva menüsü iskeleti — tıklama+panel, HP mantığı yok
-8993be9 DURUM.md devir belgesi
-6a73773 Radyal menü: 7 ikon aralığı açıldı + hit-test tek formüle bağlandı
 ```
 
 ---
 
 ## 4. BEKLEYEN İŞLER (kullanıcı onayladı, sırayla)
 
-- **B) BİNA SEVİYESİ 3→6 — SIRADAKİ İŞ (en büyük iş).** `LVL_MUL`'u **6 seviyeye** çıkar (şu an 3),
-  upgrade maliyetlerini (`upgradeCostFor` sadece sv2/sv3 biliyor), kabarcık MAX'ı 6'ya,
-  `isMax` ve `level >= 3` kontrollerini 6'ya güncelle. Seviye görseli (`LVL_TIER` şu an
-  3 kademe): sv4 bronz ışıma, sv5 gümüş, sv6 altın olacak şekilde 6 kademeye yeniden düzenle.
+**Öncelik sırası:**
 
-- **DENGE**: dalga ~22'de oyuncu ölüyor. Düşman büyümesi (HP_GROWTH 1.22) ZOR kalsın
-  (dokunma); savunma tavanı (seviye 6 + yuva HP) ile karşılansın. Sonra ince ayar.
+1. **DENGE — EN YÜKSEK ÖNCELİK (düşük risk).** Oyuncu şu an **hilesiz ~dalga 12'ye** kadar
+   dayanıyor (eskiden ~22 sanılıyordu — DÜZELTİLDİ). Yeni savunma tavanı (bina **seviye 6**
+   + yuva HP) ile bu eşiği aşmaya çalış; sonra düşman büyümesinde ince ayar yap.
 
-- **Sonra**: Faz 2B kalanı (boss dalgalar, düşman özel yetenekleri — spider ağ,
-  dungbeetle itme, enemyant soldier avı vb.), Faz 4 (ana menü/HUD cila, ses genişletme,
-  localStorage skor).
+2. **Faz 2B kalanı**: boss dalgalar, düşman özel yetenekleri (spider ağ, dungbeetle itme,
+   enemyant soldier avı vb.).
+
+3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
 
 ### Ertelenen / Notlar
+- **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
+  seviyeden bağımsız HEP 1 tile kaplıyor; bu yüzden büyüyen sv4-6 sprite'ı komşu tile'lara
+  taşıyor ve oyuncu bitişiğe hâlâ bina kurabiliyor. İstenen: ayak izi seviyeyle büyüsün,
+  bitişik bina kurmayı engellesin, etki/AOE yarıçapı footprint'le ölçeklensin, düşmanlar
+  kaplanan tile'ları **dolu/katı** algılasın. RİSKLİ — grid/yerleştirme, pathfinding, düşman
+  çarpışması ve depth-sort'a (DOKUNMA bölgesi) dokunur. GEÇ ve **ertelenen karınca-hareket AI
+  işiyle BİRLİKTE** yapılacak (ikisi de düşman/karınca pathfinding'i değiştirir).
 - **Yuvalar arası koloni bağlantısı hissi**: statik toprak patika (`drawNestPaths`) denendi ama
   izometrik perspektifte höyüklerle çakıştığı için **iptal edildi** (revert: `9cdf812`). İleride
   **karınca hareketiyle** (deliklerden giriş/çıkış) yapılacak — karınca AI hareket işiyle birlikte.
