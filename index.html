@@ -1364,7 +1364,8 @@ class Building {
             wx: w.x, wy: w.y,
             vx: (best.wx - w.x) / d * sp,
             vy: (best.wy - w.y) / d * sp,
-            dmg: cfg.dmg * eff, target: best
+            dmg: cfg.dmg * eff, target: best,
+            lvl: this.level
           });
         }
       }
@@ -1391,7 +1392,8 @@ class Building {
             vx: (best.wx - w.x) / d * sp,
             vy: (best.wy - w.y) / d * sp,
             dmg: cfg.dmg * eff, target: best,
-            aoe: true, aoeRadius: cfg.aoeRadius * eff
+            aoe: true, aoeRadius: cfg.aoeRadius * eff,
+            lvl: this.level
           });
         }
       }
@@ -1816,8 +1818,15 @@ function drawBullets() {
   for (const m of bullets) {
     const s = screenFromWorld(m.wx, m.wy);
     // catapult güllesi kalın/gri-turuncu, ranger merminden belirgin daha ağır görünür
-    ctx.lineWidth   = m.aoe ? 6 : 3;
-    ctx.strokeStyle = m.aoe ? '#c8783c' : '#ffd24a';
+    // renk seviyeye göre (LVL_TIER); m.lvl yoksa eski sabit renklere düş
+    const tier = (m.lvl && LVL_TIER[m.lvl - 1]) ? LVL_TIER[m.lvl - 1].color : null;
+    if (m.aoe) {
+      ctx.lineWidth   = 6 + (m.lvl ? (m.lvl - 1) * 0.7 : 0); // mancınık: hep kalın, seviyeyle biraz daha
+      ctx.strokeStyle = tier || '#c8783c';
+    } else {
+      ctx.lineWidth   = 3;
+      ctx.strokeStyle = tier || '#ffd24a';
+    }
     // kısa kuyruk (hız yönünün tersi) → mermi hissi, her-frame ağır iş yok
     ctx.beginPath();
     ctx.moveTo(s.x, s.y);
