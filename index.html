@@ -909,10 +909,19 @@ function onPlayingTap(x, y) {
     return;
   }
 
+  // Yuva menüsü açıksa — yuva tile'ı açık tutar, dışına tıklama kapatır.
+  // (Şimdilik buton yok; ileride HP-upgrade butonu hit-test'i buraya gelecek.)
+  if (nestMenu) {
+    const gn = toGrid(x, y);
+    if (!(inBounds(gn.col, gn.row) && grid[gn.row][gn.col].type === 'nest'))
+      nestMenu = null; // dışına tıklama → kapat
+    return;
+  }
+
   // Menü kapalı → tile seç
   const g = toGrid(x, y);
   if (!inBounds(g.col, g.row)) return;
-  if (grid[g.row][g.col].type === 'nest') return;
+  if (grid[g.row][g.col].type === 'nest') { nestMenu = true; upgradeMenu = null; return; }
   const b = buildings.find(bb => bb.gridX === g.col && bb.gridY === g.row);
   if (b) { openUpgradeMenu(b); return; } // DOLU tile → upgrade balonu
   openRadialMenu(g.col, g.row);          // BOŞ tile → kurma menüsü
@@ -1033,6 +1042,7 @@ const BUILDING_TYPES = ['moat', 'barricade', 'barracks', 'tower', 'alarm', 'rang
 let buildings   = [];
 let radialMenu  = null; // { col, row } — boş tile'a kurma menüsü
 let upgradeMenu = null; // Building referansı — dolu tile'a upgrade balonu
+let nestMenu    = null; // Yuva menüsü (Faz: yuva HP upgrade) — true iken açık. Henüz HP mantığı YOK.
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
 let floatTexts  = [];   // { wx, wy, life, text, color } — upgrade anı yükselen "Sv X!"
 let bullets     = [];   // ranger mermileri { wx, wy, vx, vy, dmg, target } — TEK HEDEF
@@ -1473,6 +1483,34 @@ function upgradeBtnHit(x, y) {
   if (food < cost) return false;
   const L = upgradeMenuLayout(upgradeMenu);
   return x >= L.btn.x && x <= L.btn.x + L.btn.w && y >= L.btn.y && y <= L.btn.y + L.btn.h;
+}
+
+/**
+ * Yuva menüsü ISKELETI (Faz: yuva HP upgrade). nestMenu null ise çizmez.
+ * Yuvanın üstünde küçük bir bilgi paneli çizer. ŞİMDİLİK SADECE GÖSTERİM:
+ * HP artırma / yem harcama / maliyet / buton YOK — sonraki adımda eklenecek.
+ * Koordinat: upgrade menüsüyle AYNI dönüşüm ailesi (screenFromWorld = toScreen).
+ */
+function drawNestMenu() {
+  if (!nestMenu) return;
+  const sc = screenFromWorld(nestW.x, nestW.y);
+  const w = 156, h = 44;
+  let bx = sc.x - w / 2;
+  let by = sc.y - 70 - h;                 // yuvanın üstünde
+  bx = Math.max(6, Math.min(W - w - 6, bx));
+  by = Math.max(6, by);
+  ctx.save();
+  // Panel (upgrade balonuyla aynı stil)
+  ctx.fillStyle = 'rgba(24,18,8,0.95)';
+  rrect(bx, by, w, h, 10); ctx.fill();
+  ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
+  // Tek satır bilgi: "Yuva  ❤️ {hp}/{max}"
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Yuva  ❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, bx + w / 2, by + h / 2 + 1);
+  ctx.restore();
 }
 
 function doUpgrade(b) {
@@ -2415,6 +2453,7 @@ function loop(ts) {
     // Layer 10: Menüler (her şeyin üstünde) — radyal (boş tile) / upgrade (dolu tile)
     drawRadialMenu();
     drawUpgradeMenu();
+    drawNestMenu();
 
     // Yardım metni
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
