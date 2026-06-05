@@ -9,7 +9,7 @@
 ## 1. PROJE
 
 **Ant Kingdom**: izometrik 2.5D tower-defense + karınca kolonisi simülasyonu.
-- HTML5 Canvas, **TEK dosya** (`index.html`, ~2441 satır), **vanilla JS**, harici bağımlılık **YOK**.
+- HTML5 Canvas, **TEK dosya** (`index.html`, ~2613 satır), **vanilla JS**, harici bağımlılık **YOK**.
 - GitHub: `keremsakiz/Ant-Kingdom` · Canlı: `keremsakiz.github.io/Ant-Kingdom/`
 - Hedef: App Store (Capacitor), **dokunmatik öncelik**, 390×844 baz çözünürlük.
 - Branch: `claude/gifted-planck-JSihd` · Repo: `C:\Users\Onur\Ant-Kingdom`
@@ -74,6 +74,19 @@
 - **Bina HP barı** çizilir; ~0.5sn'de bir kırmızı "-X" float + kıvılcım.
 - **Düşman yıkınca İADE YOK** (`destroyBuildingByEnemy` — ceza). Oyuncunun long-press %75 iadesi bundan AYRI.
 
+### Yuva HP upgrade (C — TAMAMLANDI)
+- Yuva (merkez tile) tıklanınca açılan ayrı menü: `nestMenu` / `drawNestMenu` / `doNestUpgrade` / `nestUpgradeCost`. Bina upgrade sisteminden TAMAMEN ayrı.
+- **SINIRSIZ** yükseltme: her seferinde **+50** max HP (`CONFIG.QUEEN.MAX_HP += 50`) + anlık `hudQueenHP += 50`.
+- **Artan maliyet**: `nestUpgradeCost() = 80 + nestUpgradeCount * 40` (80 → 120 → 160 → ...).
+- Yükseltmede **pembe/kırmızı puls** (`#ff5a7a`, şifa taşının yeşil `#5aff8a` pulsundan ayrı) + yükselen **"+50 ❤️"** float text.
+- **`QUEEN_BASE_HP`** ile baz HP saklanır; `startGame`'de `CONFIG.QUEEN.MAX_HP = QUEEN_BASE_HP` + `nestUpgradeCount = 0` → yeni oyunda sıfırlanır.
+- Menü görseli bina upgrade balonuyla aynı stil (panel/font/buton/afford); yetersiz yemde buton soluk, tıklama no-op.
+
+### Yuva görseli (koloni vibe'ı)
+- **`drawNestEntrance`**: düz halkalar yerine izometrik **kubbe/höyük** (dikey toprak gradyanı `#9c6b3a`→`#5a3d20`, oturma gölgesi), tepesinde mevcut halkalı giriş ("ağız").
+- **`drawNestHole`**: 3×3 nest alanının **dört köşesinde** küçük ikincil höyük + koyu delik (merkezin ~%50'si, sade).
+- **Ortak toprak doku**: tüm 3×3 nest tile'larına (köşe/kenar/merkez) deterministik kahve serpme → alan "tek yuva tarlası" gibi birleşir.
+
 ### UI
 - **Radyal menü 7 ikon**: yarım dairede eşit yayılır (RADIAL_R 108, RADIAL_IR 19), `radialIconPos` TEK formül → çizim ve hit-test asla kaymaz.
 - **Alt panel 7 buton** (taşma/kesilme düzeltildi).
@@ -86,27 +99,23 @@
 ## 3. SON COMMIT'LER
 
 ```
+9cdf812 revert: yuva patikaları kaldırıldı — ortak doku korundu
+80c508a fix: yuva patikaları uçları kısaltıldı + görünürlük artırıldı
+b550ffd polish: yuva patikaları + ortak toprak doku — bağlı koloni hissi
+f7b4dfa polish: yuva köşelerine ikincil giriş delikleri — daha heybetli yuva
+1e03161 polish: yuva girişi kubbe/höyük görünümüne çevrildi
+eb3f62f polish: yuva menüsü bina menüsü stiliyle uyumlu + yükseltme pulsu
+368c406 feat: yuva HP upgrade — sınırsız +50, artan maliyet 80+40n
+3f820e0 feat: yuva menüsü iskeleti — tıklama+panel, HP mantığı yok
+8993be9 DURUM.md devir belgesi
 6a73773 Radyal menü: 7 ikon aralığı açıldı + hit-test tek formüle bağlandı
-108a86a Alt panel: 7 buton taşması + "Mancı…" kesilmesi düzeltildi
-23c04ad Faz 2C: 7. bina Mancinik (catapult) - AOE gulle atan agir kule
-2703759 Faz 2B P1: EnemyAnt'i bina yikici yap (buildingDmg 12)
-9bd100b Faz 2B P1: Dusman-bina savasi + bina HP bari
-ff2c95e Ranger yuva-cevresi kisiti + tower/ranger maxCount ve fiyat artisi
-b7a4269 Yeni bina: Atis Kulesi (ranger) - tek hedef mermi sistemi
-46abd18 Merge branch 'claude/gifted-planck-JSihd'
-685cb94 Faz 3C: healer sinir 3 + kalici seviye gorseli + upgrade ani efekti
-914591d Faz 3C: upgrade balonuna etki satiri ekle (su an -> yukseltince)
 ```
 
 ---
 
 ## 4. BEKLEYEN İŞLER (kullanıcı onayladı, sırayla)
 
-- **C) YUVA HP UPGRADE — SIRADAKİ İLK İŞ.** Yuvaya/kraliçeye tıklayınca 3 seviyeli
-  "kraliçe max HP artır" upgrade'i (yüksek HP kazancı). Yeni etkileşim: yuva tile'ı
-  tıklanabilir olacak (şu an sadece bina tile'ları tıklanıyor). MAX_HP şu an sabit 100.
-
-- **B) BİNA SEVİYESİ 3→6 — EN BÜYÜK iş.** `LVL_MUL`'u **6 seviyeye** çıkar (şu an 3),
+- **B) BİNA SEVİYESİ 3→6 — SIRADAKİ İŞ (en büyük iş).** `LVL_MUL`'u **6 seviyeye** çıkar (şu an 3),
   upgrade maliyetlerini (`upgradeCostFor` sadece sv2/sv3 biliyor), kabarcık MAX'ı 6'ya,
   `isMax` ve `level >= 3` kontrollerini 6'ya güncelle. Seviye görseli (`LVL_TIER` şu an
   3 kademe): sv4 bronz ışıma, sv5 gümüş, sv6 altın olacak şekilde 6 kademeye yeniden düzenle.
@@ -117,6 +126,11 @@ b7a4269 Yeni bina: Atis Kulesi (ranger) - tek hedef mermi sistemi
 - **Sonra**: Faz 2B kalanı (boss dalgalar, düşman özel yetenekleri — spider ağ,
   dungbeetle itme, enemyant soldier avı vb.), Faz 4 (ana menü/HUD cila, ses genişletme,
   localStorage skor).
+
+### Ertelenen / Notlar
+- **Yuvalar arası koloni bağlantısı hissi**: statik toprak patika (`drawNestPaths`) denendi ama
+  izometrik perspektifte höyüklerle çakıştığı için **iptal edildi** (revert: `9cdf812`). İleride
+  **karınca hareketiyle** (deliklerden giriş/çıkış) yapılacak — karınca AI hareket işiyle birlikte.
 
 ---
 
