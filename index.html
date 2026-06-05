@@ -853,19 +853,22 @@ function drawNestHole(x, y, hw, hh, s) {
 function drawNestPaths(x, y, hw, hh, s) {
   const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
   ctx.save();
-  ctx.strokeStyle = 'rgba(138,94,52,0.6)'; // açık toprak tonu, zemine gömülü opaklık
-  ctx.lineWidth = hw * 0.18;               // hw zaten s-ölçekli → zoom uyumlu
+  ctx.strokeStyle = 'rgba(138,94,52,0.88)'; // açık toprak tonu, belirgin (zoom'suz görünsün)
+  ctx.lineWidth = hw * 0.22;                // hw zaten s-ölçekli → zoom uyumlu, biraz kalın
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (let k = 0; k < corners.length; k++) {
     const dc = corners[k][0], dr = corners[k][1];
     const tx = x + (dc - dr) * hw, ty = y + (dc + dr) * hh; // köşe yuva merkezi
-    const ex = x + (tx - x) * 0.82, ey = y + (ty - y) * 0.82; // höyüğe gömülsün → kısa bit
-    const vx = ex - x, vy = ey - y;
+    // İki uç da höyük tabanlarına gömülü: merkezden %20'de başla, köşe deliğe
+    // VARMADAN %70'te bitir (deliğin içinden geçmesin/ortadan görünmesin).
+    const sx = x + (tx - x) * 0.20, sy = y + (ty - y) * 0.20;
+    const ex = x + (tx - x) * 0.70, ey = y + (ty - y) * 0.70;
+    const vx = ex - sx, vy = ey - sy;
     const sign = (dc === dr) ? 1 : -1;        // köşeye göre kavis yönü değişsin (organik)
-    const cx = (x + ex) / 2 - vy * 0.16 * sign; // orta nokta + perpendiküler sapma
-    const cy = (y + ey) / 2 + vx * 0.16 * sign;
+    const cx = (sx + ex) / 2 - vy * 0.10 * sign; // orta nokta + hafif perpendiküler sapma
+    const cy = (sy + ey) / 2 + vx * 0.10 * sign;
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(sx, sy);
     ctx.quadraticCurveTo(cx, cy, ex, ey);
     ctx.stroke();
   }
