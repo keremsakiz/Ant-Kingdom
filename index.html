@@ -776,6 +776,10 @@ function drawNestEntrance(x, y, hw, hh, s) {
 // ===== HUD (PLAYING) =====
 // Placeholder values — will be wired to real state in Phase 1+
 let hudFood = 0, hudPop = 0, hudWave = 1, hudTime = 60, hudQueenHP = CONFIG.QUEEN.MAX_HP;
+// Yuva HP upgrade (sınırsız): kaç kez yükseltildi → artan maliyet. CONFIG.QUEEN.MAX_HP
+// upgrade'te kalıcı artar; yeni oyunda baz değere dönsün diye baz HP'yi burada saklarız.
+const QUEEN_BASE_HP = CONFIG.QUEEN.MAX_HP;
+let nestUpgradeCount = 0;
 
 /** Metni mevcut ctx.font ile maxW'ye sığdır: taşarsa ilk kelimeye, gerekirse …'e düşür. */
 function fitText(str, maxW) {
@@ -909,12 +913,12 @@ function onPlayingTap(x, y) {
     return;
   }
 
-  // Yuva menüsü açıksa — yuva tile'ı açık tutar, dışına tıklama kapatır.
-  // (Şimdilik buton yok; ileride HP-upgrade butonu hit-test'i buraya gelecek.)
+  // Yuva menüsü açıksa — Yükselt'e mi, yuva tile'ına mı, dışına mı?
   if (nestMenu) {
+    if (nestBtnHit(x, y)) { doNestUpgrade(); return; } // menü açık kalır, yeni değerleri gösterir
     const gn = toGrid(x, y);
     if (!(inBounds(gn.col, gn.row) && grid[gn.row][gn.col].type === 'nest'))
-      nestMenu = null; // dışına tıklama → kapat
+      nestMenu = null; // yuva DIŞINA tıklama → kapat (yuva tile'ı açık tutar)
     return;
   }
 
@@ -1485,31 +1489,79 @@ function upgradeBtnHit(x, y) {
   return x >= L.btn.x && x <= L.btn.x + L.btn.w && y >= L.btn.y && y <= L.btn.y + L.btn.h;
 }
 
-/**
- * Yuva menüsü ISKELETI (Faz: yuva HP upgrade). nestMenu null ise çizmez.
- * Yuvanın üstünde küçük bir bilgi paneli çizer. ŞİMDİLİK SADECE GÖSTERİM:
- * HP artırma / yem harcama / maliyet / buton YOK — sonraki adımda eklenecek.
- * Koordinat: upgrade menüsüyle AYNI dönüşüm ailesi (screenFromWorld = toScreen).
- */
-function drawNestMenu() {
-  if (!nestMenu) return;
+/** Yuva HP upgrade maliyeti: ilk 80, sonra her seferinde +40 (80 → 120 → 160 → ...). */
+function nestUpgradeCost() { return 80 + nestUpgradeCount * 40; }
+
+/** Yuva menüsü yerleşimi (kamera-aware): panel + Yükselt butonu dikdörtgeni.
+ *  Bina menüsündeki upgradeMenuLayout ile AYNI yaklaşım (çizim + hit-test tek kaynak). */
+function nestMenuLayout() {
   const sc = screenFromWorld(nestW.x, nestW.y);
-  const w = 156, h = 44;
+  const w = 168, h = 92;
   let bx = sc.x - w / 2;
   let by = sc.y - 70 - h;                 // yuvanın üstünde
   bx = Math.max(6, Math.min(W - w - 6, bx));
   by = Math.max(6, by);
+  const btn = { x: bx + 12, y: by + h - 36, w: w - 24, h: 28 };
+  return { bx, by, w, h, btn };
+}
+
+/** Yuva Yükselt butonu vuruldu mu? (yem yetersizse bile geometrik vuruşa bakar;
+ *  yetersizlik kontrolü doNestUpgrade içinde — buton soluk görünür ama tıklama tüketilir.) */
+function nestBtnHit(x, y) {
+  if (!nestMenu) return false;
+  const L = nestMenuLayout();
+  return x >= L.btn.x && x <= L.btn.x + L.btn.w && y >= L.btn.y && y <= L.btn.y + L.btn.h;
+}
+
+/** Yuva HP upgrade'i uygula: +50 max HP, anlık +50 HP, artan maliyet. Yem yetmezse no-op. */
+function doNestUpgrade() {
+  const cost = nestUpgradeCost();
+  if (food < cost) return;                // yetersiz yem → hiçbir şey yapma
+  food -= cost;
+  CONFIG.QUEEN.MAX_HP += 50;
+  hudQueenHP += 50;                        // mevcut HP de artsın → anında fayda
+  nestUpgradeCount++;
+  // Yuvanın üstünde yükselip solan "+50 ❤️" metni (doUpgrade'deki floatTexts formatı).
+  floatTexts.push({ wx: nestW.x, wy: nestW.y, life: 1.0, text: '+50 ❤️', color: '#7fff8a' });
+  buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#5aff8a', maxR: 54 });
+  burst(nestW.x, nestW.y, '#5aff8a', 14);
+  sndPower();
+}
+
+/**
+ * Yuva menüsü (Faz: yuva HP upgrade). nestMenu null ise çizmez. Yuvanın üstünde
+ * panel + "Yükselt (+50 ❤️)" butonu + maliyet çizer. Maliyet/HP mantığı
+ * doNestUpgrade'de; bu fonksiyon sadece çizim (afford → buton rengi).
+ */
+function drawNestMenu() {
+  if (!nestMenu) return;
+  const L = nestMenuLayout();
+  const cost = nestUpgradeCost();
+  const afford = food >= cost;
+  const cx = L.bx + L.w / 2;
   ctx.save();
   // Panel (upgrade balonuyla aynı stil)
   ctx.fillStyle = 'rgba(24,18,8,0.95)';
-  rrect(bx, by, w, h, 10); ctx.fill();
+  rrect(L.bx, L.by, L.w, L.h, 10); ctx.fill();
   ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
-  // Tek satır bilgi: "Yuva  ❤️ {hp}/{max}"
+  // Başlık: "Yuva  ❤️ {hp}/{max}"
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  ctx.textBaseline = 'alphabetic';
   ctx.font = 'bold 13px -apple-system, sans-serif';
   ctx.fillStyle = '#fff';
-  ctx.fillText('Yuva  ❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, bx + w / 2, by + h / 2 + 1);
+  ctx.fillText('Yuva  ❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, cx, L.by + 22);
+  // Yükselt butonu (afford → yeşil, değilse soluk — bina menüsüyle aynı renkler)
+  ctx.globalAlpha = afford ? 1 : 0.45;
+  ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
+  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, 7); ctx.fill();
+  ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
+  ctx.font = 'bold 12px -apple-system, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⬆ Yükselt (+50 ❤️)', cx, L.btn.y + L.btn.h / 2 - 5);
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  ctx.fillText(cost + ' 🍃', cx, L.btn.y + L.btn.h / 2 + 9);
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
@@ -2319,6 +2371,10 @@ function startGame() {
   buildings.length = 0;
   radialMenu = null;
   upgradeMenu = null;
+  nestMenu = null;
+  // Yuva HP upgrade'i sıfırla: max HP baz değere dönsün, maliyet sayacı 0'lansın.
+  CONFIG.QUEEN.MAX_HP = QUEEN_BASE_HP;
+  nestUpgradeCount = 0;
   cancelLongPress();
   buildPulses.length = 0;
   floatTexts.length = 0;
