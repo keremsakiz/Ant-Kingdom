@@ -1470,7 +1470,7 @@ function upgradeMenuLayout(b) {
 function effectLine(b) {
   const cfg  = CONFIG.BUILDINGS[b.type];
   const lvl  = b.level;
-  const isMax = lvl >= 3;
+  const isMax = lvl >= 6;
   const curM = LVL_MUL[lvl - 1];
   const nxtM = isMax ? 0 : LVL_MUL[lvl];
   switch (b.type) {
@@ -1527,13 +1527,13 @@ function drawUpgradeMenu() {
   // Seviye + HP
   ctx.font = '11px -apple-system, sans-serif';
   ctx.fillStyle = '#ffe08f';
-  ctx.fillText('Sv ' + b.level + '/3   ❤️ ' + Math.round(b.hp) + '/' + b.maxHP, cx, L.by + 38);
+  ctx.fillText('Sv ' + b.level + '/6   ❤️ ' + Math.round(b.hp) + '/' + b.maxHP, cx, L.by + 38);
   // Etkiye özgü satır: mevcut → yükseltince (MAX'ta sadece mevcut)
   ctx.font = '10px -apple-system, sans-serif';
   ctx.fillStyle = '#9fe89f';
   ctx.fillText(fitText(effectLine(b), L.w - 16), cx, L.by + 55);
   // Buton ya da MAX
-  if (b.level >= 3) {
+  if (b.level >= 6) {
     ctx.font = 'bold 13px -apple-system, sans-serif';
     ctx.fillStyle = '#7fff8a';
     ctx.fillText('★ MAX SEVİYE ★', cx, L.by + L.h - 14);
@@ -1555,7 +1555,7 @@ function drawUpgradeMenu() {
 
 /** Yükselt butonu vuruldu mu? (sv3 veya yem yetersizse null) */
 function upgradeBtnHit(x, y) {
-  if (!upgradeMenu || upgradeMenu.level >= 3) return false;
+  if (!upgradeMenu || upgradeMenu.level >= 6) return false;
   const cost = upgradeCostFor(upgradeMenu.type, upgradeMenu.level + 1);
   if (food < cost) return false;
   const L = upgradeMenuLayout(upgradeMenu);
@@ -1646,7 +1646,7 @@ function drawNestMenu() {
 }
 
 function doUpgrade(b) {
-  if (b.level >= 3) return;
+  if (b.level >= 6) return;
   const cost = upgradeCostFor(b.type, b.level + 1);
   if (food < cost) return;
   food -= cost;
