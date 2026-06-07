@@ -2346,6 +2346,7 @@ function enemyCount() { let n = 0; for (const e of enemies) if (e.active) n++; r
 function killEnemy(e) {
   e.active = false;
   score += e.reward;
+  food += Math.round(e.maxHp * 0.04); // dusman gucuyle orantili food odulu
   burst(e.wx, e.wy, '#ff6a3a', 10);
   sndCatch();
 }
