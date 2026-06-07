@@ -1141,7 +1141,7 @@ const LVL_TIER = [
 /** type binasının toLevel seviyesine yükseltme maliyeti (tablo: sv2..sv6). */
 function upgradeCostFor(type, toLevel) {
   const base = CONFIG.BUILDINGS[type].cost;
-  const MUL = { 2: 1.5, 3: 2.5, 4: 4, 5: 6, 6: 8.5 };
+  const MUL = { 2: 1.5, 3: 2.5, 4: 3.5, 5: 4.5, 6: 6 };
   const m = MUL[toLevel];
   return m ? Math.round(base * m) : 0;
 }
