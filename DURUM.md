@@ -27,7 +27,7 @@
 
 ### Faz 2A — Düşmanlar & Dalga (CONFIG.ENEMIES / CONFIG.WAVE, gerçek değerler)
 - **Kraliçe HP**: MAX_HP = **100** (`CONFIG.QUEEN.MAX_HP`).
-- **Dalga** (`CONFIG.WAVE`): PREP 15000ms, DURATION 60000ms, BASE_ENEMIES 6, ENEMY_PER_WAVE 3, **HP_GROWTH 1.22**, BONUS_PER_WAVE 50.
+- **Dalga** (`CONFIG.WAVE`): PREP 15000ms, DURATION 60000ms, BASE_ENEMIES 6, ENEMY_PER_WAVE 3, **HP_GROWTH 1.22**, **BONUS_PER_WAVE 80** (balans pass'inde 50→80).
 - **Soldier savaşı** (`CONFIG.ANT`): SOLDIER_DETECT_RANGE 260, SOLDIER_RANGE 45, SOLDIER_DPS 6, GUARD_RADIUS 80.
 - **5 düşman** (hp / speed / queenDmg / reward / unlockWave):
 
@@ -57,7 +57,7 @@
 ### Upgrade sistemi (Faz 3C + Faz3B 3→6)
 - **LVL_MUL = [1.0, 1.4, 1.9, 2.3, 2.6, 2.9]** → **6 seviye** (sv1..sv6, MAX = 6).
 - `applyLevel()`: maxHP = `hp × LVL_MUL[lvl-1]`, can dolar. `effectMul()` = LVL_MUL (tower/healer/barracks/moat etkisi seviyeyle ölçeklenir).
-- **upgradeCostFor**: artık tablo `MUL = {2:1.5, 3:2.5, 4:4, 5:6, 6:8.5}` → base × çarpan (yuvarlanmış). Tablo dışı seviye = 0.
+- **upgradeCostFor**: tablo `MUL = {2:1.5, 3:2.5, 4:3.5, 5:4.5, 6:6}` → base × çarpan (yuvarlanmış). Tablo dışı seviye = 0. **Balans pass'inde sv4-6 çarpanları düşürüldü** (eski {4:4, 5:6, 6:8.5}) → üst seviye binalar artık erişilebilir.
 - Upgrade balonu: her bina için **"şu an → yükseltince"** etki satırı (sv6'da sadece mevcut değer, "MAX"). Etiket **"Sv X/6"**.
 - **Beş seviye-tavanı kontrolü 3→6 yükseltildi**: `effectLine` isMax (`lvl >= 6`), drawUpgradeMenu "/6" etiketi, drawUpgradeMenu MAX kapısı (`b.level >= 6`), `upgradeBtnHit` (`>= 6`), `doUpgrade` guard (`>= 6`).
 - **Seviye görseli** (LVL_TIER, metin yok — renk + boyut + halka). sv1-3 metal, sv4-6 enerji renkleri (daha güçlü glow):
@@ -73,6 +73,21 @@
 
 ### Healer sınırı (alarmCanHeal)
 - Yuva menzilindeki şifa taşlarından **EN FAZLA 3'ü** (en eski kurulan, uid sıralı) kraliçeyi iyileştirir; fazlası boşa gider. Sv1 zayıf (+3/15sn) olduğu için ölümsüzlük oluşmaz.
+
+### Balans Pass'i — Ekonomi Dengesi (TAMAMLANDI, main'e merge+push)
+Sorun: oyuncu hilesiz ~dalga 12'de tıkanıyordu. Kök neden **ekonomi**: ~12. dalgaya
+kadar toplanan food, tek bina bile sv6'ya çıkmaya yetmiyordu (sv6 DPS tavanı kâğıt
+üstünde vardı ama erişilemezdi). Dört değişiklik (hepsi koddan doğrulandı):
+1. **`BONUS_PER_WAVE` 50 → 80** (dalga sonu bonus food; `endWave`).
+2. **Öldürme food ödülü**: `killEnemy` içinde `food += Math.round(e.maxHp * 0.04)` —
+   düşmanın **dalga-ölçekli** max HP'siyle orantılı **aktif gelir** (geç dalgalarda
+   güçlü düşman = daha çok food). Skor (`score += e.reward`) ayrı, korundu.
+3. **upgradeCostFor MUL** sv4-6: `{4:4,5:6,6:8.5}` → `{4:3.5,5:4.5,6:6}` → üst seviye erişilebilir.
+4. **Başlangıç food 0 → 100** (`startGame`) — açılış darboğazı giderildi.
+
+Sonuç: oyuncu artık hilesiz **15. dalgayı belirgin şekilde aşıyor**; ekonomi
+açılış (başlangıç food) + aktif gelir (öldürme + dalga bonusu) + ulaşılabilir sv6
+tavanı olarak dengelendi. **Balans pass'i kapandı.**
 
 ### Faz 2B Parça 1 — Düşman-bina savaşı (koddan doğrulandı)
 - **Bina yıkan düşmanlar**: ladybug, dungbeetle, enemyant (`isBuildingBreaker:true`). **spider yıkmaz**, **bird yıkmaz** (uçar).
@@ -105,17 +120,17 @@
 ## 3. SON COMMIT'LER
 
 ```
+ab655db balance: baslangic food 100 + ust seviye upgrade maliyeti dusuruldu
+bd9c4d4 balance: dusman oldurunce maxHp orantili food odulu eklendi
+fdc8a2e balance: ust seviye upgrade maliyeti dusuruldu, sv4-6 erisebilir
+8204c74 balance: BONUS_PER_WAVE 50->80, geç dalga ekonomi darboğazı
+423ae99 DURUM.md güncel: Faz3B bina 3→6, mermi renkleri, çok-tile ertelendi
 a5e27a8 Faz3B+: mermi rengi seviyeye göre + mancınık kalınlığı seviyeyle artar
 4c70ec8 Faz3B P3: bina seviye görselleri (renk şeması + sv4+ nabız parıltı)
 5ad98ba Faz3B P2: bina seviye tavanı 3→6
 4b7d2e3 Faz3B P1: bina seviye verisi 3→6 (LVL_MUL, LVL_TIER, upgradeCostFor)
-4c62d6f docs: DURUM.md — yuva HP upgrade + görseli tamamlandı, sıradaki B
-9cdf812 revert: yuva patikaları kaldırıldı — ortak doku korundu
-80c508a fix: yuva patikaları uçları kısaltıldı + görünürlük artırıldı
-b550ffd polish: yuva patikaları + ortak toprak doku — bağlı koloni hissi
-f7b4dfa polish: yuva köşelerine ikincil giriş delikleri — daha heybetli yuva
-1e03161 polish: yuva girişi kubbe/höyük görünümüne çevrildi
 ```
+> Not: 4 balans commit'i main'e merge + origin/main'e push edildi.
 
 ---
 
@@ -123,12 +138,12 @@ f7b4dfa polish: yuva köşelerine ikincil giriş delikleri — daha heybetli yuv
 
 **Öncelik sırası:**
 
-1. **DENGE — EN YÜKSEK ÖNCELİK (düşük risk).** Oyuncu şu an **hilesiz ~dalga 12'ye** kadar
-   dayanıyor (eskiden ~22 sanılıyordu — DÜZELTİLDİ). Yeni savunma tavanı (bina **seviye 6**
-   + yuva HP) ile bu eşiği aşmaya çalış; sonra düşman büyümesinde ince ayar yap.
+1. ~~**DENGE**~~ — **TAMAMLANDI** (balans pass'i, bkz. Bölüm 2 "Balans Pass'i"). Oyuncu artık
+   hilesiz 15. dalgayı belirgin şekilde aşıyor. Ekonomi açılış + aktif gelir + ulaşılabilir
+   sv6 tavanı olarak dengelendi. (İleride yeni içerik eklenince ince ayar gerekebilir.)
 
-2. **Faz 2B kalanı**: boss dalgalar, düşman özel yetenekleri (spider ağ, dungbeetle itme,
-   enemyant soldier avı vb.).
+2. **Faz 2B kalanı — SIRADAKİ.** Boss dalgalar, düşman özel yetenekleri (spider ağ,
+   dungbeetle itme, enemyant soldier avı vb.).
 
 3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
 
