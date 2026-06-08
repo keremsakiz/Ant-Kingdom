@@ -78,6 +78,7 @@ const sndBorn    = () => beep(950, 0.14, "triangle", 0.11);
 const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
 const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "square", 0.12); };
 const sndBird    = () => beep(1400, 0.2, "sine", 0.1);
+const sndBoom    = () => { beep(90, 0.18, "sawtooth", 0.2); beep(60, 0.3, "square", 0.16); }; // boss alan saldırısı darbesi
 const melody = [392, 440, 523, 440, 392, 330, 392, 294]; let mi = 0;
 function startMusic() {
   if (!actx || !soundOn) return; stopMusic();
@@ -211,6 +212,12 @@ const camera = {
   pinchCamX: 0, pinchCamY: 0
 };
 
+// ===== EKRAN SARSINTISI (Faz 2B P3) =====
+// Geçici GÖRSEL offset — camera.x/y'yi KALICI değiştirmez (pan/pinch bozulmaz).
+// Her frame loop() başında shakeX/shakeY hesaplanır + shakeMag söner; screenFromWorld
+// ve toScreen AYNI offset'i ekler (yoksa dünya kayar). shakeMag=0 iken offset 0.
+let shakeMag = 0, shakeX = 0, shakeY = 0;
+
 /** Center camera so the isometric grid sits centered in viewport */
 function centerCamera() {
   const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
@@ -246,8 +253,8 @@ function clampCamera() {
 function toScreen(col, row) {
   const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
   return {
-    x: (col - row) * (TW / 2) * camera.scale + camera.x,
-    y: (col + row) * (TH / 2) * camera.scale + camera.y
+    x: (col - row) * (TW / 2) * camera.scale + camera.x + shakeX,
+    y: (col + row) * (TH / 2) * camera.scale + camera.y + shakeY
   };
 }
 
@@ -1036,7 +1043,7 @@ function worldFromGrid(col, row) {
 }
 /** World iso-pixel → screen pixel (camera-aware) */
 function screenFromWorld(wx, wy) {
-  return { x: wx * camera.scale + camera.x, y: wy * camera.scale + camera.y };
+  return { x: wx * camera.scale + camera.x + shakeX, y: wy * camera.scale + camera.y + shakeY };
 }
 
 // Nest center in world space (NEST_COL/ROW defined in grid section)
@@ -1256,6 +1263,32 @@ function destroyBuildingByEnemy(b) {
   buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#c81e14', maxR: 46 });
   burst(w.x, w.y, '#d05050', 12);
   sndCatch();
+}
+
+/**
+ * Boss alan saldırısı (Faz 2B P3): boss konumu çevresinde yarıçap içindeki TÜM
+ * binalara hasar + yeşil genişleyen halka + ekran sarsıntısı + darbe sesi.
+ * SADECE bina hasarı — karıncalar/kraliçe etkilenmez (boss'un yürüme/queenDmg'i AYRI).
+ */
+function bossAreaAttack(e) {
+  const R = 70, R2 = R * R, AOE_DMG = 40;
+  // Geri doğru gez: destroyBuildingByEnemy splice ettiğinde alt indeksler kaymasın.
+  for (let i = buildings.length - 1; i >= 0; i--) {
+    const b = buildings[i];
+    const w = worldFromGrid(b.gridX, b.gridY);
+    const dx = w.x - e.wx, dy = w.y - e.wy;
+    if (dx * dx + dy * dy <= R2) {
+      b.hp -= AOE_DMG;
+      floatTexts.push({ wx: w.x, wy: w.y, life: 1.0, text: '-' + AOE_DMG, color: '#3aff6a' });
+      burst(w.x, w.y, '#3aff6a', 6);
+      if (b.hp <= 0) destroyBuildingByEnemy(b);
+    }
+  }
+  // Görsel/işitsel: yeşil halka + parçacık + darbe sesi + sarsıntı
+  buildPulses.push({ wx: e.wx, wy: e.wy, life: 1.0, c: '#3aff6a', maxR: 90 });
+  burst(e.wx, e.wy, '#3aff6a', 14);
+  sndBoom();
+  shakeMag = 12;
 }
 
 class Building {
@@ -2350,6 +2383,7 @@ class Enemy {
     this.buildingDmg = cfg.buildingDmg || 0;
     this._atkAccum = 0;                             // saldırı hasar biriktirici (floatText throttle)
     this._atkTimer = 0;                             // saldırı efekt zamanlayıcı (dts birimi)
+    this.atkTimer  = 0;                             // BOSS alan saldırısı periyot sayacı (dts birimi; boss değilse kullanılmaz)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2358,6 +2392,15 @@ class Enemy {
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.angle += aDiff(des, this.angle) * 0.12 * dts;
     this.step(dts);
+
+    // BOSS: yürürken ~2sn'de bir alan saldırısı (bina hasarı). Normal düşman ETKİLENMEZ.
+    if (this.isBoss) {
+      this.atkTimer += dts;
+      if (this.atkTimer >= 120) { // 120 dts ≈ 2sn @60fps
+        this.atkTimer = 0;
+        bossAreaAttack(this);
+      }
+    }
 
     const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
     if (dx * dx + dy * dy < NEST_WORLD_R * NEST_WORLD_R) {
@@ -2663,6 +2706,15 @@ function loop(ts) {
     ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
 
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
+
+    // ── Ekran sarsıntısı (P3) — bu frame'in offset'i + dt-ölçekli sönüm ──
+    // İlk çizimden ÖNCE hesapla ki toScreen/screenFromWorld tutarlı offset alsın.
+    if (shakeMag > 0.1) {
+      shakeX = (Math.random() - 0.5) * shakeMag;
+      shakeY = (Math.random() - 0.5) * shakeMag;
+      shakeMag *= Math.pow(0.9, dts);
+      if (shakeMag <= 0.1) { shakeMag = 0; shakeX = 0; shakeY = 0; }
+    } else { shakeX = 0; shakeY = 0; }
 
     // ── Yem yönetimi ──
     // 0) Yaşlandır: 20sn'dir toplanmayan yemi kaldır (ulaşılamaz olabilir)
