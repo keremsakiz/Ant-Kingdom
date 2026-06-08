@@ -95,6 +95,33 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 - **Bina HP barı** çizilir; ~0.5sn'de bir kırmızı "-X" float + kıvılcım.
 - **Düşman yıkınca İADE YOK** (`destroyBuildingByEnemy` — ceza). Oyuncunun long-press %75 iadesi bundan AYRI.
 
+### Faz 2B Boss — TAMAMLANDI (3 parça, koddan doğrulandı)
+**Boss = `Enemy` (e.isBoss). Her 5. dalgada 1 devasa zehirli akrep.**
+
+**P1 — Boss spawn altyapısı:**
+- `isBossWave(w)` = `wave % 5 === 0` → o dalga boss dalgası.
+- `startWave`: boss dalgasında normal düşman sayısı **yarıya** iner (`Math.ceil(count/2)`); boss bu sayıya dahil **DEĞİL** (ayrı spawn). `bossPending = isBossWave(wave)` set edilir.
+- `updateWave` WAVE bloğu: faza girince **ilk frame'de** `bossPending` ise `spawnEnemy('dungbeetle', waveHpScale, true)` → tam **1 boss**, bayrak temizlenir.
+- `spawnEnemy(type, hpScale, isBoss=false)` imzası genişletildi; `e.init`'e geçer.
+- `Enemy.init(type, hpScale, isBoss=false)` boss çarpanları (dungbeetle tipinden türer): **maxHp = dungbeetle.hp × hpScale × 6**, **queenDmg × 2**, **reward × 5**, **speed aynı**; `e.isBoss = true`. Normal düşman init davranışı HİÇ değişmedi (default `false`).
+
+**P2 — `drawBoss(x, y, angle, wig, cam)` (kod-çizimli devasa OYNAK akrep, emoji DEĞİL):**
+- Koyu mor/siyah zehirli tema: gövde `#3a1a4d`, kenar/segment `#1f0d2e`, vurgu `#6a3a8a`, iğne ucu parlak `#b070e0`.
+- Anatomi: **3 oval gövde** (sefalotoraks+abdomen) + **2 çatallı kıskaç** (pedipalp) + **8 bacak** (yanlarda 4'er) + **5 segmentli kıvrık kuyruk** + uçta parlak **iğne** üçgeni + sırt vurgu noktaları + parlak gözler.
+- Boyut: karıncanın ~**3 katı** (`BS = cam × 3`); kendi büyük gölgesi.
+- Animasyon karıncayla **AYNI teknik** (tek `Math.sin(wig)`, yeni zaman kaynağı YOK): gövde sallanması + bacaklar **zıt faz** (yürüyüş) + kıskaç açılıp kapanma + kuyruk ucu salınımı. `wig` zaten `Enemy.step`'te artar.
+- `Enemy.draw`: `isBoss` ise `drawBoss(...)` çağrılır; **P1'deki geçici "emoji ×2.5" kaldırıldı**. Normal düşman emoji çizimi `else` dalında aynen.
+- HP barı boss'a göre büyütüldü: `bw 26→64`, `bh 4→5`, `by -16→-40`. Normal düşman barı değişmedi.
+
+**P3 — Akrep alan saldırısı (SADECE bina) + ekran sarsıntısı:**
+- `bossAreaAttack(e)`: boss yürürken `Enemy.update` içinde **~2sn'de bir** (`atkTimer >= 120` dts; `this.atkTimer` boss değilse kullanılmaz) tetiklenir. `R = 70` dünya yarıçapındaki **TÜM binalara** `AOE_DMG = 40` hasar (`worldFromGrid` mesafesiyle); yeşil `-40` floatText + burst; `hp <= 0` → `destroyBuildingByEnemy(b)` (geri-iterasyon, splice güvenli).
+- Görsel/işitsel: **yeşil genişleyen halka** (`buildPulses` `c:'#3aff6a'`, `maxR 90`) + `burst ×14` + `sndBoom()` + `shakeMag = 12`.
+- `sndBoom = () => { beep(90,0.18,"sawtooth",0.2); beep(60,0.3,"square",0.16); }`.
+- **Ekran sarsıntısı altyapısı (yeni, minimal):** global `shakeMag/shakeX/shakeY`; `loop()` başında ilk çizimden önce dt-ölçekli sönüm (`shakeMag *= Math.pow(0.9, dts)`, eşik altında 0). `toScreen` + `screenFromWorld` çıktısına **AYNI** `+shakeX/+shakeY` offset eklenir. **Ters dönüşümlere (toGrid/dokunma girişi) ve `camera.x/y`'ye DOKUNULMADI → pan/pinch bozulmaz.** `shakeMag=0` iken offset 0 (mevcut görüntü değişmez).
+- Boss'un yürüme/`queenDmg` mantığı AYRI korundu; alan saldırısı ona EK. **Normal düşmanlar bu davranıştan etkilenmez** (sadece `isBoss`).
+
+> **ÖNEMLİ NOT — karınca hp/ölüm:** Karıncalarda **hp/ölüm mekaniği YOK** (koddan doğrulandı — `Ant`'ta hp alanı yok, hiçbir yer `ant.active=false` yapmıyor). Akrep alan saldırısı **şimdilik SADECE binaya** vuruyor. Karınca HP+ölüm **bilinçli ertelendi** — ertelenen **karınca AI/çok-tile workstream'iyle BİRLİKTE** yapılacak; o zaman akrep saldırısına "karıncaya da vur" eklemek **tek satır** (aynı yarıçap döngüsüne `ants` taraması).
+
 ### Yuva HP upgrade (C — TAMAMLANDI)
 - Yuva (merkez tile) tıklanınca açılan ayrı menü: `nestMenu` / `drawNestMenu` / `doNestUpgrade` / `nestUpgradeCost`. Bina upgrade sisteminden TAMAMEN ayrı.
 - **SINIRSIZ** yükseltme: her seferinde **+50** max HP (`CONFIG.QUEEN.MAX_HP += 50`) + anlık `hudQueenHP += 50`.
@@ -120,17 +147,18 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 ## 3. SON COMMIT'LER
 
 ```
+5890919 Faz2B Boss P3: akrep alan saldirisi (bina hasari) + yesil halka + sarsinti + ses
+822a091 Faz2B Boss P2: drawBoss() kod-cizimli devasa oynak akrep (emoji yok)
+30d599e Faz2B Boss P1: boss spawn altyapisi (her 5. dalga, dungbeetle x6 HP)
+93cbddd docs: DURUM.md balans pass'i yansitildi, siradaki Faz 2B
 ab655db balance: baslangic food 100 + ust seviye upgrade maliyeti dusuruldu
 bd9c4d4 balance: dusman oldurunce maxHp orantili food odulu eklendi
 fdc8a2e balance: ust seviye upgrade maliyeti dusuruldu, sv4-6 erisebilir
 8204c74 balance: BONUS_PER_WAVE 50->80, geç dalga ekonomi darboğazı
-423ae99 DURUM.md güncel: Faz3B bina 3→6, mermi renkleri, çok-tile ertelendi
-a5e27a8 Faz3B+: mermi rengi seviyeye göre + mancınık kalınlığı seviyeyle artar
-4c70ec8 Faz3B P3: bina seviye görselleri (renk şeması + sv4+ nabız parıltı)
-5ad98ba Faz3B P2: bina seviye tavanı 3→6
-4b7d2e3 Faz3B P1: bina seviye verisi 3→6 (LVL_MUL, LVL_TIER, upgradeCostFor)
 ```
-> Not: 4 balans commit'i main'e merge + origin/main'e push edildi.
+> **Not (bu session):** 3 boss commit'i (P1/P2/P3) **branch'te** (`claude/gifted-planck-JSihd`) —
+> bu session'da main'e **MERGE EDİLMEDİ**. Merge zinciri session sonunda yapılacak.
+> (Önceki 4 balans commit'i daha önce main'e merge + push edilmişti.)
 
 ---
 
@@ -142,8 +170,11 @@ a5e27a8 Faz3B+: mermi rengi seviyeye göre + mancınık kalınlığı seviyeyle 
    hilesiz 15. dalgayı belirgin şekilde aşıyor. Ekonomi açılış + aktif gelir + ulaşılabilir
    sv6 tavanı olarak dengelendi. (İleride yeni içerik eklenince ince ayar gerekebilir.)
 
-2. **Faz 2B kalanı — SIRADAKİ.** Boss dalgalar, düşman özel yetenekleri (spider ağ,
-   dungbeetle itme, enemyant soldier avı vb.).
+2. **Faz 2B** — kısmen tamamlandı:
+   - ~~**Boss dalgalar**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Boss — 3 parça"). Her 5. dalgada devasa akrep boss.
+   - **Düşman özel yetenekleri — SIRADAKİ (kalan Faz 2B).** spider ağ, dungbeetle itme,
+     enemyant soldier avı vb. (Not: enemyant soldier avı + akrep "karıncaya vur" → karınca hp/ölüm
+     mekaniği gerektirir; karınca AI workstream'iyle birlikte gelebilir.)
 
 3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
 
