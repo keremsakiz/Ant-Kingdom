@@ -156,9 +156,9 @@ bd9c4d4 balance: dusman oldurunce maxHp orantili food odulu eklendi
 fdc8a2e balance: ust seviye upgrade maliyeti dusuruldu, sv4-6 erisebilir
 8204c74 balance: BONUS_PER_WAVE 50->80, geç dalga ekonomi darboğazı
 ```
-> **Not (bu session):** 3 boss commit'i (P1/P2/P3) **branch'te** (`claude/gifted-planck-JSihd`) —
-> bu session'da main'e **MERGE EDİLMEDİ**. Merge zinciri session sonunda yapılacak.
-> (Önceki 4 balans commit'i daha önce main'e merge + push edilmişti.)
+> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Faz 2B Boss commit'leri (P1/P2/P3)
+> main'e **MERGE + PUSH EDİLDİ**. `main`, `origin/main` ve branch hepsi **senkron** (aynı commit).
+> **Bekleyen / merge edilmemiş commit YOK.** (Önceki 4 balans commit'i de daha önce main'e merge + push edilmişti.)
 
 ---
 
