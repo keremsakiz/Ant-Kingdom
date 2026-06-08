@@ -2206,17 +2206,27 @@ function enemySpawnPoint() {
 
 class Enemy {
   constructor() { this.active = false; this.uid = _uid++; }
-  /** (Re)initialize a pooled enemy. hpScale = dalga HP çarpanı. */
-  init(type, hpScale) {
+  /** (Re)initialize a pooled enemy. hpScale = dalga HP çarpanı. isBoss=true → boss çarpanları. */
+  init(type, hpScale, isBoss = false) {
     const cfg = CONFIG.ENEMIES[type];
     const sp  = enemySpawnPoint();
     this.type     = type;
     this.wx = sp.x; this.wy = sp.y;
-    this.maxHp    = cfg.hp * hpScale;
+    this.isBoss   = isBoss;
+    if (isBoss) {
+      // Boss: dungbeetle tipinden türer; tanklı + sert + bol ödüllü (hız aynı).
+      // Özel yetenek/saldırı/görsel YOK (sonraki parçalar). Sadece çarpanlar.
+      this.maxHp    = cfg.hp * hpScale * 6;
+      this.queenDmg = cfg.queenDmg * 2;
+      this.reward   = cfg.reward * 5;
+      this.speed    = cfg.speed;
+    } else {
+      this.maxHp    = cfg.hp * hpScale;
+      this.speed    = cfg.speed;
+      this.queenDmg = cfg.queenDmg;
+      this.reward   = cfg.reward;
+    }
     this.hp       = this.maxHp;
-    this.speed    = cfg.speed;
-    this.queenDmg = cfg.queenDmg;
-    this.reward   = cfg.reward;
     this.emoji    = cfg.emoji;
     this.angle    = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.wig      = Math.random() * 10;
@@ -2305,7 +2315,10 @@ class Enemy {
   draw() {
     const sp  = screenFromWorld(this.wx, this.wy);
     const s   = camera.scale;
-    const fontPx = Math.max(14, Math.round(22 * s));
+    // GEÇİCİ: boss'un kendi çizimi yok; test için emoji'yi belirgin büyük çiz (×2.5).
+    // Parça 2'de drawBoss() ile değişecek.
+    const bossMul = this.isBoss ? 2.5 : 1;
+    const fontPx = Math.max(14, Math.round(22 * s * bossMul));
     const spr = getEmojiSprite(this.emoji, fontPx);
 
     // Gölge (alpha elle ayarla/sıfırla — save/restore'dan ucuz)
@@ -2334,10 +2347,10 @@ const enemies = [];
 // Her frame loop()'ta temizlenir; updateGuard hedef dağılımı için kullanır.
 const _enemyLoad = new Map();
 /** Spawn (or recycle) an enemy of given type, applying wave HP scale */
-function spawnEnemy(type, hpScale) {
+function spawnEnemy(type, hpScale, isBoss = false) {
   let e = enemies.find(x => !x.active);
   if (!e) { if (enemies.length >= CONFIG.POOL.ENEMIES) return null; e = new Enemy(); enemies.push(e); }
-  e.init(type, hpScale); return e;
+  e.init(type, hpScale, isBoss); return e;
 }
 /** Count active enemies */
 function enemyCount() { let n = 0; for (const e of enemies) if (e.active) n++; return n; }
@@ -2361,11 +2374,16 @@ let waveToSpawn     = 0;        // kalan spawn edilecek düşman
 let waveSpawnTimer  = 0;        // ms akümülatörü
 let waveSpawnEvery  = 0;        // ms — spawn'lar arası süre
 let waveHpScale     = 1;        // HP_GROWTH^(wave-1)
+let bossPending     = false;    // boss dalgasında WAVE'e geçince ilk frame'de 1 boss spawn et
 let queenFlash      = 0;        // kraliçe hasar anı kırmızı flash (0..1, söner)
+
+/** Dalga numarası 5'in katıysa boss dalgası. */
+function isBossWave(w) { return w % 5 === 0; }
 
 function resetWaves() {
   wave = 1; wavePhase = 'PREP'; phaseTimer = 0;
   waveToSpawn = 0; waveSpawnTimer = 0; waveSpawnEvery = 0; waveHpScale = 1;
+  bossPending = false;
   queenFlash = 0;
   hudWave = wave;
   hudTime = Math.ceil(CONFIG.WAVE.PREP_MS / 1000);
@@ -2377,6 +2395,11 @@ function updateWave(dt) {
     hudTime = Math.max(0, Math.ceil((CONFIG.WAVE.PREP_MS - phaseTimer) / 1000));
     if (phaseTimer >= CONFIG.WAVE.PREP_MS) startWave();
   } else { // WAVE
+    // Boss dalgasında dalga başında BİR KEZ boss spawn et (dungbeetle tipinden türer).
+    if (bossPending) {
+      spawnEnemy('dungbeetle', waveHpScale, true);
+      bossPending = false;
+    }
     if (waveToSpawn > 0) {
       waveSpawnTimer += dt;
       while (waveToSpawn > 0 && waveSpawnTimer >= waveSpawnEvery) {
@@ -2394,7 +2417,10 @@ function updateWave(dt) {
 function startWave() {
   wavePhase  = 'WAVE';
   phaseTimer = 0;
-  const count = CONFIG.WAVE.BASE_ENEMIES + wave * CONFIG.WAVE.ENEMY_PER_WAVE;
+  let count = CONFIG.WAVE.BASE_ENEMIES + wave * CONFIG.WAVE.ENEMY_PER_WAVE;
+  // Boss dalgası: normal düşman sayısı yarıya iner (boss buna dahil DEĞİL, ayrı spawn).
+  bossPending = isBossWave(wave);
+  if (bossPending) count = Math.ceil(count / 2);
   waveToSpawn    = count;
   waveHpScale    = Math.pow(CONFIG.WAVE.HP_GROWTH, wave - 1);
   waveSpawnEvery = CONFIG.WAVE.DURATION_MS / (count + 1); // süreye yay
