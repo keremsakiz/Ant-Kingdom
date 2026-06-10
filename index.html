@@ -77,7 +77,7 @@ const sndDeposit = () => { beep(520, 0.09, "sine", 0.1); beep(780, 0.11, "sine",
 const sndBorn    = () => beep(950, 0.14, "triangle", 0.11);
 const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
 const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "square", 0.12); };
-const sndBird    = () => beep(1400, 0.2, "sine", 0.1);
+const sndBird    = () => { beep(1200, 0.12, "sawtooth", 0.16); beep(700, 0.15, "sawtooth", 0.14); }; // alçalan iki tonlu kısa çığlık (dalış)
 const sndBoom    = () => { beep(90, 0.18, "sawtooth", 0.2); beep(60, 0.3, "square", 0.16); }; // boss alan saldırısı darbesi
 const melody = [392, 440, 523, 440, 392, 330, 392, 294]; let mi = 0;
 function startMusic() {
@@ -2499,7 +2499,7 @@ class Enemy {
     if (this.type === 'bird') {
       this.diveTimer += dts;
       if (this.diveState === 0) {
-        if (this.diveTimer >= 240) { // 240 dts ≈ 4sn @60fps → dalış başlar
+        if (this.diveTimer >= 150) { // 150 dts ≈ 2.5sn @60fps → dalış başlar (kısa ömründe 2-3 dalış)
           this.diveState = 1; this.diveTimer = 0;
           sndBird();
           floatTexts.push({ wx: this.wx, wy: this.wy, life: 1.0, text: '!', color: '#ffd24a' });
@@ -2507,10 +2507,10 @@ class Enemy {
       } else if (this.diveTimer >= 60) { // dalış ~1sn (60 dts) sürer → süzülmeye dön
         this.diveState = 0; this.diveTimer = 0;
       }
-      if (this.diveState === 1) this.slowMul *= 2;
+      if (this.diveState === 1) this.slowMul *= 1.6; // ×2 yuvaya çok çabuk vardırıyordu
       // Alçalma görseli: hedef yüksekliğe yumuşak yaklaşım (lerp — ani zıplama yok)
       const tgtLift = (this.diveState === 1) ? 2 : 18;
-      this.liftBase += (tgtLift - this.liftBase) * 0.12 * dts;
+      this.liftBase += (tgtLift - this.liftBase) * 0.06 * dts; // ~0.6sn'de otursun, süzülerek
     }
 
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
