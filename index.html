@@ -79,6 +79,7 @@ const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
 const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "square", 0.12); };
 const sndBird    = () => { beep(1200, 0.12, "sawtooth", 0.16); beep(700, 0.15, "sawtooth", 0.14); }; // alçalan iki tonlu kısa çığlık (dalış)
 const sndBoom    = () => { beep(90, 0.18, "sawtooth", 0.2); beep(60, 0.3, "square", 0.16); }; // boss alan saldırısı darbesi
+const sndHeal    = () => beep(900, 0.1, "sine", 0.08); // ladybug şifa pulsu (hafif pozitif bip)
 const melody = [392, 440, 523, 440, 392, 330, 392, 294]; let mi = 0;
 function startMusic() {
   if (!actx || !soundOn) return; stopMusic();
@@ -2467,6 +2468,7 @@ class Enemy {
     this.isMini    = false;                         // mini spider bayrağı (pool yeniden kullanımda eskisi taşınmasın)
     this.sizeMul   = 1;                             // çizim boyut çarpanı (mini spider 0.6, diğerleri 1)
     this.webTimer  = 0;                             // SPIDER ağ bırakma periyot sayacı (dts; spider değilse kullanılmaz)
+    this.healTimer = 0;                             // LADYBUG şifa pulsu periyot sayacı (dts; ladybug değilse kullanılmaz)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2490,6 +2492,32 @@ class Enemy {
     // Moat yavaşlatma × ağ hızlandırma (spider ağlı tile'da 1.4) — tile bazlı, o frame'lik.
     // BIRD uçar: moat üstünden geçer, yavaşlamaz (ağ çarpanı spider-dışında zaten 1).
     this.slowMul = (this.type === 'bird') ? 1 : moatSlowAt(this.wx, this.wy) * webMulAt(this.wx, this.wy, this.type);
+
+    // LADYBUG şifa pulsu (boss atkTimer deseni): ~3sn'de bir, 60px içindeki DİĞER
+    // aktif düşmanlara +6 hp (maxHp clamp). En az 1 iyileşme olursa pembe halka + ses.
+    if (this.type === 'ladybug') {
+      this.healTimer += dts;
+      if (this.healTimer >= 180) { // 180 dts ≈ 3sn @60fps
+        this.healTimer = 0;
+        const R2 = 60 * 60;
+        let healed = 0;
+        for (const o of enemies) {
+          if (!o.active || o === this || o.hp >= o.maxHp) continue;
+          const dx = o.wx - this.wx, dy = o.wy - this.wy;
+          if (dx * dx + dy * dy > R2) continue;
+          const add = Math.min(6, o.maxHp - o.hp); // clamp: maxHp aşılmaz
+          o.hp += add;
+          floatTexts.push({ wx: o.wx, wy: o.wy, life: 1.0, text: '+' + Math.round(add), color: '#5aff8a' });
+          healed++;
+        }
+        if (healed) {
+          // boss'un yeşil halka deseni, pembe tonda (bossAreaAttack buildPulses kalıbı)
+          buildPulses.push({ wx: this.wx, wy: this.wy, life: 1.0, c: '#ff6b9d', maxR: 75 });
+          sndHeal();
+        }
+      }
+    }
+
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.angle += aDiff(des, this.angle) * 0.12 * dts;
     this.step(dts);
