@@ -2654,10 +2654,32 @@ const enemies = [];
 // Her frame loop()'ta temizlenir; updateGuard hedef dağılımı için kullanır.
 const _enemyLoad = new Map();
 /** Spawn (or recycle) an enemy of given type, applying wave HP scale */
+let _spawningEscort = false; // ladybug refakatçi spawn'ı sürerken rekürsiyonu kes (mini, mini doğurmaz)
 function spawnEnemy(type, hpScale, isBoss = false) {
   let e = enemies.find(x => !x.active);
   if (!e) { if (enemies.length >= CONFIG.POOL.ENEMIES) return null; e = new Enemy(); enemies.push(e); }
-  e.init(type, hpScale, isBoss); return e;
+  e.init(type, hpScale, isBoss);
+  // LADYBUG (Faz2B P1): ana ladybug yanında 2 mini refakatçi doğar (mini spider
+  // isMini/sizeMul deseni). _spawningEscort zinciri keser: refakatçi spawn'ı bu
+  // bloğa tekrar girmez. Statlar ananın ~%40'ı (aşağı yuvarlı), boyut 0.6.
+  if (type === 'ladybug' && !isBoss && !_spawningEscort) {
+    _spawningEscort = true;
+    for (let i = 0; i < 2; i++) {
+      const m = spawnEnemy('ladybug', hpScale); // pool dolu/null ise sessizce atla
+      if (!m) break;
+      m.isMini  = true;
+      m.sizeMul = 0.6;
+      m.wx = e.wx + (i === 0 ? 18 : -18); // ananın iki yanı, çakışma yok
+      m.wy = e.wy + (i === 0 ? 12 : -12);
+      m.angle = Math.atan2(nestW.y - m.wy, nestW.x - m.wx); // init formülü: yuvaya doğru
+      m.hp = m.maxHp = Math.max(1, Math.floor(e.maxHp * 0.4));
+      m.reward      = Math.floor(e.reward * 0.4);
+      m.queenDmg    = Math.floor(e.queenDmg * 0.4);
+      m.buildingDmg = Math.floor(e.buildingDmg * 0.4); // isBuildingBreaker kalır, hasar orantılı
+    }
+    _spawningEscort = false;
+  }
+  return e;
 }
 /** Count active enemies */
 function enemyCount() { let n = 0; for (const e of enemies) if (e.active) n++; return n; }
