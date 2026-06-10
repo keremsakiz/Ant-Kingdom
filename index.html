@@ -1270,6 +1270,8 @@ function destroyBuildingByEnemy(b) {
  * binalara hasar + yeşil genişleyen halka + ekran sarsıntısı + darbe sesi.
  * SADECE bina hasarı — karıncalar/kraliçe etkilenmez (boss'un yürüme/queenDmg'i AYRI).
  */
+const BOSS_NEST_DMG = 15; // boss yuvada dururken her alan saldırısı periyodunda kraliçeye verdiği hasar
+
 function bossAreaAttack(e) {
   const R = 70, R2 = R * R, AOE_DMG = 40;
   // Geri doğru gez: destroyBuildingByEnemy splice ettiğinde alt indeksler kaymasın.
@@ -2384,9 +2386,27 @@ class Enemy {
     this._atkAccum = 0;                             // saldırı hasar biriktirici (floatText throttle)
     this._atkTimer = 0;                             // saldırı efekt zamanlayıcı (dts birimi)
     this.atkTimer  = 0;                             // BOSS alan saldırısı periyot sayacı (dts birimi; boss değilse kullanılmaz)
+    this.atNest    = false;                         // BOSS yuvaya vardı mı (yuvada durup kraliçeyi döver; boss değilse kullanılmaz)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
+    // BOSS yuvada: hareket yok (step atlanır), animasyon sürer; alan saldırısı
+    // döngüsü işler ve her periyotta kraliçeye EK sabit hasar verir. Boss sadece
+    // HP'si bitince ölür (intihar yok).
+    if (this.isBoss && this.atNest) {
+      this.wig += 0.3 * dts; // step çağrılmıyor; sallanma animasyonu devam etsin
+      this.atkTimer += dts;
+      if (this.atkTimer >= 120) { // 120 dts ≈ 2sn @60fps
+        this.atkTimer = 0;
+        bossAreaAttack(this); // çevre binalara AOE aynen
+        hudQueenHP -= BOSS_NEST_DMG;
+        queenFlash = 1;
+        floatTexts.push({ wx: nestW.x, wy: nestW.y, life: 1.0, text: '-' + BOSS_NEST_DMG, color: '#ff5a4a' });
+        if (hudQueenHP <= 0) { hudQueenHP = 0; endGame(score, wave); }
+      }
+      return;
+    }
+
     // Moat: tile üstündeyken bu frame yavaşla, ayrılınca otomatik normale döner.
     this.slowMul = moatSlowAt(this.wx, this.wy);
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
@@ -2404,11 +2424,16 @@ class Enemy {
 
     const dx = this.wx - nestW.x, dy = this.wy - nestW.y;
     if (dx * dx + dy * dy < NEST_WORLD_R * NEST_WORLD_R) {
-      hudQueenHP -= this.queenDmg;
-      this.active = false;
-      queenFlash = 1;
-      burst(this.wx, this.wy, '#c81e14', 8);
-      if (hudQueenHP <= 0) { hudQueenHP = 0; endGame(score, wave); }
+      if (this.isBoss) {
+        // Boss intihar etmez: yuva kenarında durup kraliçeyi dövmeye başlar.
+        this.atNest = true;
+      } else {
+        hudQueenHP -= this.queenDmg;
+        this.active = false;
+        queenFlash = 1;
+        burst(this.wx, this.wy, '#c81e14', 8);
+        if (hudQueenHP <= 0) { hudQueenHP = 0; endGame(score, wave); }
+      }
     }
   }
   /** Konumu ilerlet, sonra Ant.step ile AYNI diamond-clamp'le grid içinde tut. */
