@@ -141,6 +141,20 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 - Çizim: `drawSpiderWebs()` — loop'ta `drawPheromone` sonrası, depth-sort ÖNCESİ ("Layer 2.5": zemin üstü, bina/birim altı). Tile merkezinde yarı saydam izometrik ağ (6 ışın + 2 basık elips halka, alpha 0.35, `#e8e8f0`, R = 11×scale). 120 ağın hepsi **tek path + tek stroke**; ekran dışı atlanır.
 - Reset: `startGame`'de `spiderWebs.length = 0; webSet.clear()`.
 
+### Faz 2B Bird — TAMAMLANDI (gerçek uçuş; dalış denendi ve bilinçli kaldırıldı)
+
+**Kalan davranış (koddan doğrulanmış):** bird artık gerçek uçan düşman.
+- **Moat muafiyeti**: `Enemy.update`'te `slowMul` ataması — `type === 'bird'` ise 1 sabitlenir (moat yavaşlatmaz; ağ çarpanı spider-dışında zaten 1, davranış kaybı yok).
+- **Barikat muafiyeti**: `step`'teki `isBarricadeTile` dalına `this.type !== 'bird' &&` ön koşulu — bird barikatın üstünden düz uçar, `_side` dolaşması yok. Bina hasar bloğuna girmez (`isBuildingBreaker` değil, o dal zaten kapalı).
+- **Uçuş görseli**: `Enemy.draw`'da `lift = (18 + Math.sin(this.wig * 0.1) * 4) * s` (`type === 'bird'`, diğerlerinde 0 → çıktı birebir aynı). Gövde sprite + HP barı `lift` kadar yukarıda; **gölge elipsi yerde** kalır. Salınım mevcut `wig`'den, yeni zaman kaynağı yok.
+
+**Dalış mekaniği — DENENDİ, KALDIRILDI (tasarım kararı):** P2/P3'te periyodik dalış
+eklendi (süzül → ~1sn hız çarpanı + alçalma görseli + sndBird), ayar geçişi de yapıldı
+(150 dts periyot, ×1.6, lerp 0.06) ama **bird'ün kısa ömrüne uymadı** — kuleler bird'ü
+dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu komple temizlendi
+(diveTimer/diveState/liftBase, update bloğu, sndBird çağrısı); uçuş P1 haliyle korundu.
+- **Kalıntı:** `sndBird` tanımı (satır ~80, iki tonlu sawtooth) **ölü kod olarak bilinçli bırakıldı** — çağıran yok, zararsız; ileride bird sesi gerekirse hazır.
+
 ### Perf — Emoji sprite ön-ısıtma (spawn/zoom stutter fix)
 - Teşhis: yeni emoji+fontPx kombinasyonu ilk çizimde rasterize edilir (cache miss) → spawn anında frame takılması (mini ×0.6 boyutu, yeni düşman tipinin ilk spawn'ı, zoom değişimi).
 - `warmEmojiSprites()`: `Enemy.draw`'daki GERÇEK formülle (`base = max(14, round(22×camera.scale))`) tüm `CONFIG.ENEMIES` emojilerini **normal + mini (×0.6)** boyutta `getEmojiSprite`'a pişirtir. SADECE düşman emojileri (boss kod-çizimli, karınca/bina dahil değil). `getEmojiSprite`'ın içine DOKUNULMADI.
@@ -177,18 +191,18 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 ## 3. SON COMMIT'LER
 
 ```
+94f6daa Faz2B Bird final: dalis kaldirildi, ucus korundu
+8bd2408 Faz2B Bird P3: dalis ayar (150 periyot, x1.6, lerp 0.06, ses belirgin)
+091c4ab Faz2B Bird P2: dalis (4sn'de bir 1sn hiz x2, alcalma gorseli, sndBird)
+aea48b2 Faz2B Bird P1: gercek ucus (moat/barikat muaf, havada suzulme gorseli)
+fe22542 docs: DURUM.md Boss P4 + Spider P1/P2 + perf isitma yansitildi
 fbc7364 perf: emoji sprite on-isitma (spawn/zoom stutter fix)
 14ce0f0 Faz2B Spider P2: ag otoyolu (tile bazli iz, spider hiz x1.4, FIFO 120)
 549173a fix: mini spider olum noktasinda dogar (m===e aliasing bug)
-fa481a8 Faz2B Spider P1: olunce 2 mini spider dogurur (isMini, olum noktasinda)
-a94aaa1 Faz2B Boss P4: boss yuvada durup kraliceyi dover (15/2sn), intihar yok
-0450c44 docs: DURUM.md branch durumu duzeltildi (boss merge edilmis)
-8c458da docs: DURUM.md Faz2B Boss (P1/P2/P3) yansitildi
-5890919 Faz2B Boss P3: akrep alan saldirisi (bina hasari) + yesil halka + sarsinti + ses
 ```
-> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **TÜM commit'ler main'e
-> MERGE + PUSH EDİLDİ.** `main`, `origin/main` ve branch hepsi **senkron** (aynı commit).
-> **Bekleyen / merge edilmemiş commit YOK.**
+> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. `fe22542`'ye kadar her şey
+> main'e merge + push edilmişti. **4 Bird commit'i (`aea48b2`..`94f6daa`) henüz main'e
+> MERGE EDİLMEDİ ve origin'e PUSH EDİLMEDİ** (branch, origin'den 4 commit ileride).
 
 ---
 
@@ -203,13 +217,18 @@ a94aaa1 Faz2B Boss P4: boss yuvada durup kraliceyi dover (15/2sn), intihar yok
 2. **Faz 2B** — kısmen tamamlandı:
    - ~~**Boss dalgalar**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Boss — 4 parça"). Her 5. dalgada devasa akrep boss; yuvada durup kraliçeyi döver.
    - ~~**Spider yetenekleri**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Spider — 2 parça"): mini spider bölünmesi + ağ otoyolu.
-   - **Kalan düşman yetenekleri — SIRADAKİ:**
-     - **bird dalış** — kolay aday, önce bu.
+   - ~~**Bird**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Bird"): gerçek uçuş (moat/barikat
+     muafiyeti + havada süzülme görseli). Dalış denendi, bird'ün kısa ömrüne uymadığı için
+     **bilinçli kaldırıldı** (tasarım kararı — tekrar açma, gerekçe Bölüm 2'de).
+   - **Kalan düşman yetenekleri:**
      - **dungbeetle itme** — RİSKLİ (grid'e/yerleştirmeye dokunur), ertelenebilir.
      - Karınca HP gerektirenler (enemyant soldier avı, akrep "karıncaya vur") HÂLÂ ertelenmiş —
        karınca hp/ölüm mekaniğiyle, karınca AI workstream'iyle birlikte gelecek.
 
 3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
+
+> **SIRADAKİ ÖNCELİK — KARAR BEKLİYOR:** dungbeetle itme (riskli) mi, Faz 4 (cila) mı?
+> Kullanıcıyla tartışılacak; yeni oturum bu kararı verilmiş sayMASIN.
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
