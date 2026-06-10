@@ -2387,6 +2387,8 @@ class Enemy {
     this._atkTimer = 0;                             // saldırı efekt zamanlayıcı (dts birimi)
     this.atkTimer  = 0;                             // BOSS alan saldırısı periyot sayacı (dts birimi; boss değilse kullanılmaz)
     this.atNest    = false;                         // BOSS yuvaya vardı mı (yuvada durup kraliçeyi döver; boss değilse kullanılmaz)
+    this.isMini    = false;                         // mini spider bayrağı (pool yeniden kullanımda eskisi taşınmasın)
+    this.sizeMul   = 1;                             // çizim boyut çarpanı (mini spider 0.6, diğerleri 1)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2500,12 +2502,13 @@ class Enemy {
       // Boss: kod-çizimli devasa oynak akrep (emoji yok). Kendi gölgesini de çizer.
       drawBoss(sp.x, sp.y, this.angle, this.wig, s);
     } else {
-      const fontPx = Math.max(14, Math.round(22 * s));
+      const mul = this.sizeMul || 1; // mini spider 0.6 ile küçük çizilir; mul=1'de çıktı birebir aynı
+      const fontPx = Math.round(Math.max(14, Math.round(22 * s)) * mul);
       const spr = getEmojiSprite(this.emoji, fontPx);
 
       // Gölge (alpha elle ayarla/sıfırla — save/restore'dan ucuz)
       ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.ellipse(sp.x, sp.y + 5 * s, 9 * s, 5 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(sp.x, sp.y + 5 * s, 9 * s * mul, 5 * s * mul, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
       ctx.drawImage(spr.canvas, sp.x - spr.size / 2, sp.y - spr.size / 2, spr.size, spr.size);
@@ -2545,6 +2548,22 @@ function killEnemy(e) {
   food += Math.round(e.maxHp * 0.04); // dusman gucuyle orantili food odulu
   burst(e.wx, e.wy, '#ff6a3a', 10);
   sndCatch();
+  // Spider ölünce öldüğü yerde 2 mini spider doğar (mini tekrar doğurmaz → zincir yok).
+  if (e.type === 'spider' && !e.isMini) {
+    for (let i = 0; i < 2; i++) {
+      const m = spawnEnemy('spider', 1); // hpScale=1: dalga ölçeği uygulanmaz
+      if (!m) break;                     // pool dolu → sessizce atla
+      m.isMini  = true;
+      m.sizeMul = 0.6;
+      m.wx = e.wx + (i === 0 ? 12 : -12);
+      m.wy = e.wy + (i === 0 ? 8 : -8);
+      m.angle = Math.atan2(nestW.y - m.wy, nestW.x - m.wx); // init ile aynı formül: yuvaya doğru
+      m.hp = m.maxHp = 8;
+      m.speed = 2.0;
+      m.queenDmg = 2;
+      m.reward = 2;
+    }
+  }
 }
 
 // ===== WAVE SYSTEM (Faz 2A) =====
