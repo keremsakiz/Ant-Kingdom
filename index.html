@@ -2488,7 +2488,8 @@ class Enemy {
     }
 
     // Moat yavaşlatma × ağ hızlandırma (spider ağlı tile'da 1.4) — tile bazlı, o frame'lik.
-    this.slowMul = moatSlowAt(this.wx, this.wy) * webMulAt(this.wx, this.wy, this.type);
+    // BIRD uçar: moat üstünden geçer, yavaşlamaz (ağ çarpanı spider-dışında zaten 1).
+    this.slowMul = (this.type === 'bird') ? 1 : moatSlowAt(this.wx, this.wy) * webMulAt(this.wx, this.wy, this.type);
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.angle += aDiff(des, this.angle) * 0.12 * dts;
     this.step(dts);
@@ -2557,9 +2558,10 @@ class Enemy {
       } else {
         this.wx = nx; this.wy = ny;
       }
-    } else if (isBarricadeTile(ncol, nrow)) {
+    } else if (this.type !== 'bird' && isBarricadeTile(ncol, nrow)) {
       // Barikat: yıkıcı olmayan düşman hareket etmez, açıyı sabit yöne saptır →
       // birkaç frame'de etrafından dolaşır (mevcut davranış korunur).
+      // BIRD muaf: uçar, barikatın üstünden düz geçer (else dalına düşer).
       this.angle += this._side * 0.5 * dts; // eski konumda kal, yana kay
     } else {
       this.wx = nx; this.wy = ny;
@@ -2585,6 +2587,10 @@ class Enemy {
     const sp  = screenFromWorld(this.wx, this.wy);
     const s   = camera.scale;
 
+    // BIRD uçuş yüksekliği: gövde + HP barı yukarı süzülür, gölge YERDE kalır.
+    // Salınım mevcut wig'den (yeni zaman kaynağı yok); bird-dışında 0 → çıktı birebir aynı.
+    const lift = (this.type === 'bird') ? (18 + Math.sin(this.wig * 0.1) * 4) * s : 0;
+
     if (this.isBoss) {
       // Boss: kod-çizimli devasa oynak akrep (emoji yok). Kendi gölgesini de çizer.
       drawBoss(sp.x, sp.y, this.angle, this.wig, s);
@@ -2593,18 +2599,18 @@ class Enemy {
       const fontPx = Math.round(Math.max(14, Math.round(22 * s)) * mul);
       const spr = getEmojiSprite(this.emoji, fontPx);
 
-      // Gölge (alpha elle ayarla/sıfırla — save/restore'dan ucuz)
+      // Gölge (alpha elle ayarla/sıfırla — save/restore'dan ucuz) — lift'ten ETKİLENMEZ
       ctx.globalAlpha = 0.26; ctx.fillStyle = '#000';
       ctx.beginPath(); ctx.ellipse(sp.x, sp.y + 5 * s, 9 * s * mul, 5 * s * mul, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
 
-      ctx.drawImage(spr.canvas, sp.x - spr.size / 2, sp.y - spr.size / 2, spr.size, spr.size);
+      ctx.drawImage(spr.canvas, sp.x - spr.size / 2, sp.y - lift - spr.size / 2, spr.size, spr.size);
     }
 
     // HP barı (yeşil→kırmızı, zoom'a ölçekli, gradient/shadow yok). Boss daha büyük → bar geniş ve yukarıda.
     const frac = Math.max(0, this.hp / this.maxHp);
     const bw = (this.isBoss ? 64 : 26) * s, bh = (this.isBoss ? 5 : 4) * s;
-    const bx = sp.x - bw / 2, by = sp.y - (this.isBoss ? 40 : 16) * s;
+    const bx = sp.x - bw / 2, by = sp.y - lift - (this.isBoss ? 40 : 16) * s;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     const r = Math.round(220 * (1 - frac) + 40 * frac);
