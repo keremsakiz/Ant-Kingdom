@@ -95,7 +95,7 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 - **Bina HP barı** çizilir; ~0.5sn'de bir kırmızı "-X" float + kıvılcım.
 - **Düşman yıkınca İADE YOK** (`destroyBuildingByEnemy` — ceza). Oyuncunun long-press %75 iadesi bundan AYRI.
 
-### Faz 2B Boss — TAMAMLANDI (3 parça, koddan doğrulandı)
+### Faz 2B Boss — TAMAMLANDI (4 parça, koddan doğrulandı)
 **Boss = `Enemy` (e.isBoss). Her 5. dalgada 1 devasa zehirli akrep.**
 
 **P1 — Boss spawn altyapısı:**
@@ -119,6 +119,36 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 - `sndBoom = () => { beep(90,0.18,"sawtooth",0.2); beep(60,0.3,"square",0.16); }`.
 - **Ekran sarsıntısı altyapısı (yeni, minimal):** global `shakeMag/shakeX/shakeY`; `loop()` başında ilk çizimden önce dt-ölçekli sönüm (`shakeMag *= Math.pow(0.9, dts)`, eşik altında 0). `toScreen` + `screenFromWorld` çıktısına **AYNI** `+shakeX/+shakeY` offset eklenir. **Ters dönüşümlere (toGrid/dokunma girişi) ve `camera.x/y`'ye DOKUNULMADI → pan/pinch bozulmaz.** `shakeMag=0` iken offset 0 (mevcut görüntü değişmez).
 - Boss'un yürüme/`queenDmg` mantığı AYRI korundu; alan saldırısı ona EK. **Normal düşmanlar bu davranıştan etkilenmez** (sadece `isBoss`).
+
+**P4 — Boss yuvada durup kraliçeyi döver (intihar yok):**
+- Boss yuvaya (`NEST_WORLD_R`) varınca **ÖLMEZ**, tek seferlik `queenDmg` de vermez; `e.atNest = true` set edilir.
+- `atNest` iken hareket yok (`step` çağrılmaz), sallanma animasyonu sürer (`wig` elle artar). Mevcut `atkTimer >= 120` (~2sn) döngüsü işlemeye devam eder; her tetiklenmede `bossAreaAttack` (çevre binalara AOE aynen) + kraliçeye **`BOSS_NEST_DMG = 15`** hasar + `queenFlash` + kırmızı "-15" floatText; HP ≤ 0 → mevcut `endGame` akışı.
+- Boss SADECE HP'si bitince ölür (mevcut ölüm/ödül akışı değişmedi). Normal düşmanın yuva davranışı `else` dalında aynen korundu. `atNest` `init`'te sıfırlanır (pool güvenliği).
+
+### Faz 2B Spider — TAMAMLANDI (2 parça, koddan doğrulandı)
+
+**P1 — Spider ölünce öldüğü yerde 2 mini spider doğar:**
+- `killEnemy` içinde `e.type === 'spider' && !e.isMini` ise 2× `spawnEnemy('spider', 1)` (hpScale=1, dalga ölçeği yok; pool dolu/null ise sessizce atlanır).
+- Mini statları: **hp = maxHp = 8, speed = 2.0, queenDmg = 2, reward = 2**; `isMini = true` → mini ölünce TEKRAR doğurmaz (zincir kesik); `sizeMul = 0.6` → `Enemy.draw` emoji dalında sprite + gölge bu çarpanla küçülür (mul=1'de çıktı birebir eski).
+- Konum: ölüm noktası ± offset (1. mini +12/+8, 2. mini −12/−8), açı init formülüyle yuvaya doğru yeniden hesaplanır.
+- **Aliasing fix (`549173a`)**: `spawnEnemy` ölen spider'ın kendi objesini geri dönüştürebilir (m===e) ve `init` wx/wy'yi kenar-spawn ile ezer → ölüm konumu döngüden ÖNCE `ox/oy`'a saklanır; offset'ler oradan okunur.
+- `isMini`/`sizeMul` `init`'te sıfırlanır (pool güvenliği).
+
+**P2 — Ağ otoyolu (kalıcı tile izi + spider hızlanması):**
+- `spiderWebs` dizisi (`{gx,gy,wx,wy}` tile merkezli) + `webSet` (lookup, anahtar `gx+','+gy`) + **`WEB_MAX = 120` FIFO** (doluysa en eski shift + anahtar silinir). `addSpiderWeb(wx,wy)` ekler (tile zaten ağlıysa no-op).
+- Bırakma: `Enemy.update`'te SADECE `type==='spider'`, `webTimer >= 45` dts'de bir (~0.75sn) bulunduğu tile'a iz. `webTimer` init'te sıfırlanır.
+- Hızlanma: `webMulAt(wx,wy,type)` → spider değilse 1; ağlı tile'da **`WEB_SPEED_MUL = 1.4`**. `update`'teki çarpan satırı: `slowMul = moatSlowAt(...) * webMulAt(...)` — **moat ile çarpılır**, `step`'e dokunulmadı (hız zaten `speed × slowMul`). Mini'ler de spider tipi olduğundan otomatik hızlanır.
+- Çizim: `drawSpiderWebs()` — loop'ta `drawPheromone` sonrası, depth-sort ÖNCESİ ("Layer 2.5": zemin üstü, bina/birim altı). Tile merkezinde yarı saydam izometrik ağ (6 ışın + 2 basık elips halka, alpha 0.35, `#e8e8f0`, R = 11×scale). 120 ağın hepsi **tek path + tek stroke**; ekran dışı atlanır.
+- Reset: `startGame`'de `spiderWebs.length = 0; webSet.clear()`.
+
+### Perf — Emoji sprite ön-ısıtma (spawn/zoom stutter fix)
+- Teşhis: yeni emoji+fontPx kombinasyonu ilk çizimde rasterize edilir (cache miss) → spawn anında frame takılması (mini ×0.6 boyutu, yeni düşman tipinin ilk spawn'ı, zoom değişimi).
+- `warmEmojiSprites()`: `Enemy.draw`'daki GERÇEK formülle (`base = max(14, round(22×camera.scale))`) tüm `CONFIG.ENEMIES` emojilerini **normal + mini (×0.6)** boyutta `getEmojiSprite`'a pişirtir. SADECE düşman emojileri (boss kod-çizimli, karınca/bina dahil değil). `getEmojiSprite`'ın içine DOKUNULMADI.
+- Çağrı: (a) `startGame`'de bir kez; (b) `loop()`'ta debounce — ölçek 10 frame sabit kalınca (`scaleStableFrames === 10`) ve `lastWarmScale`'den farklıysa bir kez ısıt. Pinch SIRASINDA asla çalışmaz (ölçek değiştikçe sayaç sıfırlanır).
+
+> **NOT — kalan mikro stutter (izlemede):** spawn anlarında gözlemlenen mikro stutter
+> profiler ile incelendi; takılma anında **Main ve GPU şeritleri boş** — oyun kodu
+> kaynaklı DEĞİL, sistemsel/tarayıcı katmanı. İzlemede; **mobil cihaz testi yapılacak**.
 
 > **ÖNEMLİ NOT — karınca hp/ölüm:** Karıncalarda **hp/ölüm mekaniği YOK** (koddan doğrulandı — `Ant`'ta hp alanı yok, hiçbir yer `ant.active=false` yapmıyor). Akrep alan saldırısı **şimdilik SADECE binaya** vuruyor. Karınca HP+ölüm **bilinçli ertelendi** — ertelenen **karınca AI/çok-tile workstream'iyle BİRLİKTE** yapılacak; o zaman akrep saldırısına "karıncaya da vur" eklemek **tek satır** (aynı yarıçap döngüsüne `ants` taraması).
 
@@ -147,18 +177,18 @@ tavanı olarak dengelendi. **Balans pass'i kapandı.**
 ## 3. SON COMMIT'LER
 
 ```
+fbc7364 perf: emoji sprite on-isitma (spawn/zoom stutter fix)
+14ce0f0 Faz2B Spider P2: ag otoyolu (tile bazli iz, spider hiz x1.4, FIFO 120)
+549173a fix: mini spider olum noktasinda dogar (m===e aliasing bug)
+fa481a8 Faz2B Spider P1: olunce 2 mini spider dogurur (isMini, olum noktasinda)
+a94aaa1 Faz2B Boss P4: boss yuvada durup kraliceyi dover (15/2sn), intihar yok
+0450c44 docs: DURUM.md branch durumu duzeltildi (boss merge edilmis)
+8c458da docs: DURUM.md Faz2B Boss (P1/P2/P3) yansitildi
 5890919 Faz2B Boss P3: akrep alan saldirisi (bina hasari) + yesil halka + sarsinti + ses
-822a091 Faz2B Boss P2: drawBoss() kod-cizimli devasa oynak akrep (emoji yok)
-30d599e Faz2B Boss P1: boss spawn altyapisi (her 5. dalga, dungbeetle x6 HP)
-93cbddd docs: DURUM.md balans pass'i yansitildi, siradaki Faz 2B
-ab655db balance: baslangic food 100 + ust seviye upgrade maliyeti dusuruldu
-bd9c4d4 balance: dusman oldurunce maxHp orantili food odulu eklendi
-fdc8a2e balance: ust seviye upgrade maliyeti dusuruldu, sv4-6 erisebilir
-8204c74 balance: BONUS_PER_WAVE 50->80, geç dalga ekonomi darboğazı
 ```
-> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Faz 2B Boss commit'leri (P1/P2/P3)
-> main'e **MERGE + PUSH EDİLDİ**. `main`, `origin/main` ve branch hepsi **senkron** (aynı commit).
-> **Bekleyen / merge edilmemiş commit YOK.** (Önceki 4 balans commit'i de daha önce main'e merge + push edilmişti.)
+> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **TÜM commit'ler main'e
+> MERGE + PUSH EDİLDİ.** `main`, `origin/main` ve branch hepsi **senkron** (aynı commit).
+> **Bekleyen / merge edilmemiş commit YOK.**
 
 ---
 
@@ -171,10 +201,13 @@ fdc8a2e balance: ust seviye upgrade maliyeti dusuruldu, sv4-6 erisebilir
    sv6 tavanı olarak dengelendi. (İleride yeni içerik eklenince ince ayar gerekebilir.)
 
 2. **Faz 2B** — kısmen tamamlandı:
-   - ~~**Boss dalgalar**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Boss — 3 parça"). Her 5. dalgada devasa akrep boss.
-   - **Düşman özel yetenekleri — SIRADAKİ (kalan Faz 2B).** spider ağ, dungbeetle itme,
-     enemyant soldier avı vb. (Not: enemyant soldier avı + akrep "karıncaya vur" → karınca hp/ölüm
-     mekaniği gerektirir; karınca AI workstream'iyle birlikte gelebilir.)
+   - ~~**Boss dalgalar**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Boss — 4 parça"). Her 5. dalgada devasa akrep boss; yuvada durup kraliçeyi döver.
+   - ~~**Spider yetenekleri**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Spider — 2 parça"): mini spider bölünmesi + ağ otoyolu.
+   - **Kalan düşman yetenekleri — SIRADAKİ:**
+     - **bird dalış** — kolay aday, önce bu.
+     - **dungbeetle itme** — RİSKLİ (grid'e/yerleştirmeye dokunur), ertelenebilir.
+     - Karınca HP gerektirenler (enemyant soldier avı, akrep "karıncaya vur") HÂLÂ ertelenmiş —
+       karınca hp/ölüm mekaniğiyle, karınca AI workstream'iyle birlikte gelecek.
 
 3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
 
