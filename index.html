@@ -2550,13 +2550,14 @@ function killEnemy(e) {
   sndCatch();
   // Spider ölünce öldüğü yerde 2 mini spider doğar (mini tekrar doğurmaz → zincir yok).
   if (e.type === 'spider' && !e.isMini) {
+    const ox = e.wx, oy = e.wy; // ölüm konumu — spawnEnemy e'yi geri dönüştürürse (m===e) init wx/wy'yi ezer
     for (let i = 0; i < 2; i++) {
       const m = spawnEnemy('spider', 1); // hpScale=1: dalga ölçeği uygulanmaz
       if (!m) break;                     // pool dolu → sessizce atla
       m.isMini  = true;
       m.sizeMul = 0.6;
-      m.wx = e.wx + (i === 0 ? 12 : -12);
-      m.wy = e.wy + (i === 0 ? 8 : -8);
+      m.wx = ox + (i === 0 ? 12 : -12);
+      m.wy = oy + (i === 0 ? 8 : -8);
       m.angle = Math.atan2(nestW.y - m.wy, nestW.x - m.wx); // init ile aynı formül: yuvaya doğru
       m.hp = m.maxHp = 8;
       m.speed = 2.0;
