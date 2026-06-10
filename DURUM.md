@@ -155,6 +155,30 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
 (diveTimer/diveState/liftBase, update bloğu, sndBird çağrısı); uçuş P1 haliyle korundu.
 - **Kalıntı:** `sndBird` tanımı (satır ~80, iki tonlu sawtooth) **ölü kod olarak bilinçli bırakıldı** — çağıran yok, zararsız; ileride bird sesi gerekirse hazır.
 
+### Faz 2B Ladybug — P1 TAMAM (test edildi), şifa AÇIK UÇLU (sonraki sohbette ilk iş)
+
+**P1 — 2 mini refakatçi (`84de777`, test edildi):**
+- `spawnEnemy` içinde `type === 'ladybug' && !isBoss` ise ana ladybug'ın iki yanına
+  (±18/±12 px) 2 mini spawn olur. Mini spider deseninin spawn-zamanlı uyarlaması.
+- Mini statlar ananın **~%40'ı, aşağı yuvarlı** (dalga ölçeği otomatik taşınır):
+  `hp = floor(maxHp×0.4)` (min 1), reward floor(×0.4), queenDmg floor(×0.4),
+  buildingDmg floor(×0.4) — mini de bina-yıkıcı kalır, orantılı zayıf. `sizeMul = 0.6`.
+- **Zincir kesme**: modül seviyesi `_spawningEscort` bayrağı — refakatçi spawn'ı bloğa
+  tekrar girmez (mini, mini doğurmaz). Pool dolarsa sessizce atlanır.
+- `warmEmojiSprites` değişikliği GEREKMEDİ (×0.6 mini boyut tüm düşman emojileri için zaten ısıtılıyor).
+
+**Şifa pulsu (`c1ed745` — İLK prompt'un kodu çalışıyor; ayrı "P2" prompt'u GİRİLMEDİ):**
+- Kod: `Enemy.update`'te `type === 'ladybug'` bloğu — `healTimer >= 180` (~3sn),
+  R=60px içindeki **kendisi hariç** aktif düşmanlara `+min(6, eksik)` hp (maxHp clamp),
+  iyileşen başına yeşil `+N` floatText; en az 1 iyileşme varsa pembe halka (`#ff6b9d`) + `sndHeal`.
+- **Kerem'in test gözlemi**: şifa kendine VE minilere +6 basıyor (P2 hedefiyle örtüşüyor).
+- **DOĞRULANMADI**: kodda `isMini` guard'ı var mı (miniler de mi şifa basıyor?), fullken
+  efekt çıkıyor mu. (Bu oturumun kod raporuna göre guard YOK — miniler de ladybug tipi
+  olduğundan puls atıyor; bu, "ana kendine şifa" gözlemini açıklar. Ama KODDAN TEKRAR doğrula.)
+- **SONRAKİ SOHBETTE İLK İŞ**: healTimer bloğunu koddan oku, gözlemle karşılaştır,
+  gerekirse TEK küçük düzeltme (sadece ana ladybug bassın + fullken efekt çıkmasın)
+  + balans kontrolü (aile fazla tanksa +6→+4 veya periyot 180→240).
+
 ### Perf — Emoji sprite ön-ısıtma (spawn/zoom stutter fix)
 - Teşhis: yeni emoji+fontPx kombinasyonu ilk çizimde rasterize edilir (cache miss) → spawn anında frame takılması (mini ×0.6 boyutu, yeni düşman tipinin ilk spawn'ı, zoom değişimi).
 - `warmEmojiSprites()`: `Enemy.draw`'daki GERÇEK formülle (`base = max(14, round(22×camera.scale))`) tüm `CONFIG.ENEMIES` emojilerini **normal + mini (×0.6)** boyutta `getEmojiSprite`'a pişirtir. SADECE düşman emojileri (boss kod-çizimli, karınca/bina dahil değil). `getEmojiSprite`'ın içine DOKUNULMADI.
@@ -191,18 +215,18 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
 ## 3. SON COMMIT'LER
 
 ```
+84de777 Faz2B Ladybug P1: 2 mini refakatci (isMini, 0.6 boyut, zincir kesik)
+c1ed745 Faz2B Ladybug: sifa pulsu (3sn, R60, +6hp, pembe halka)
+105e95f docs: DURUM.md Bird final
 94f6daa Faz2B Bird final: dalis kaldirildi, ucus korundu
 8bd2408 Faz2B Bird P3: dalis ayar (150 periyot, x1.6, lerp 0.06, ses belirgin)
 091c4ab Faz2B Bird P2: dalis (4sn'de bir 1sn hiz x2, alcalma gorseli, sndBird)
 aea48b2 Faz2B Bird P1: gercek ucus (moat/barikat muaf, havada suzulme gorseli)
 fe22542 docs: DURUM.md Boss P4 + Spider P1/P2 + perf isitma yansitildi
-fbc7364 perf: emoji sprite on-isitma (spawn/zoom stutter fix)
-14ce0f0 Faz2B Spider P2: ag otoyolu (tile bazli iz, spider hiz x1.4, FIFO 120)
-549173a fix: mini spider olum noktasinda dogar (m===e aliasing bug)
 ```
 > **Branch durumu:** Branch `claude/gifted-planck-JSihd`. `fe22542`'ye kadar her şey
-> main'e merge + push edilmişti. **4 Bird commit'i (`aea48b2`..`94f6daa`) henüz main'e
-> MERGE EDİLMEDİ ve origin'e PUSH EDİLMEDİ** (branch, origin'den 4 commit ileride).
+> main'e merge + push edilmişti. **`aea48b2` ve sonrası (Bird + Ladybug + docs) henüz
+> main'e MERGE EDİLMEDİ ve origin'e PUSH EDİLMEDİ** (branch, origin'den ileride).
 
 ---
 
@@ -217,18 +241,30 @@ fbc7364 perf: emoji sprite on-isitma (spawn/zoom stutter fix)
 2. **Faz 2B** — kısmen tamamlandı:
    - ~~**Boss dalgalar**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Boss — 4 parça"). Her 5. dalgada devasa akrep boss; yuvada durup kraliçeyi döver.
    - ~~**Spider yetenekleri**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Spider — 2 parça"): mini spider bölünmesi + ağ otoyolu.
-   - ~~**Bird**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Bird"): gerçek uçuş (moat/barikat
-     muafiyeti + havada süzülme görseli). Dalış denendi, bird'ün kısa ömrüne uymadığı için
-     **bilinçli kaldırıldı** (tasarım kararı — tekrar açma, gerekçe Bölüm 2'de).
-   - **Kalan düşman yetenekleri:**
-     - **dungbeetle itme** — RİSKLİ (grid'e/yerleştirmeye dokunur), ertelenebilir.
-     - Karınca HP gerektirenler (enemyant soldier avı, akrep "karıncaya vur") HÂLÂ ertelenmiş —
-       karınca hp/ölüm mekaniğiyle, karınca AI workstream'iyle birlikte gelecek.
+   - ~~**Bird**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 2B Bird"): gerçek uçan düşman —
+     moat/barikat muafiyeti + havada süzülme görseli (gölge yerde). Dalış mekaniği denendi,
+     bird'ün kısa ömrüne uymadığı için **bilinçli kaldırıldı** (tasarım kararı — tekrar açma,
+     gerekçe Bölüm 2'de).
+   - **Ladybug** — P1 tamam + test edildi (2 mini refakatçi); **şifa açık uçlu** —
+     sonraki sohbette İLK İŞ (doğrulama + olası tek küçük düzeltme + balans, bkz. Bölüm 2).
+   - Karınca HP gerektirenler (enemyant soldier avı, akrep "karıncaya vur", dungbeetle
+     topunun karınca hedeflemesi) HÂLÂ ertelenmiş — karınca hp/ölüm mekaniğiyle,
+     karınca AI workstream'iyle birlikte gelecek.
 
 3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
 
-> **SIRADAKİ ÖNCELİK — KARAR BEKLİYOR:** dungbeetle itme (riskli) mi, Faz 4 (cila) mı?
-> Kullanıcıyla tartışılacak; yeni oturum bu kararı verilmiş sayMASIN.
+> **SIRADAKİ ÖNCELİK — DUNGBEETLE TOPU (karar verildi):**
+> **Tasarım: itme DEĞİL** (grid/yerleştirme riski nedeniyle iptal). Bunun yerine:
+> dungbeetle yürürken arkasında **büyüyen kahverengi top**; top belli boyuta ulaşınca
+> **en yakın binaya/yuvaya fırlatılır**, çarpınca hasar + parçacık. Karınca hedefi
+> HP workstream'ine ertelendi.
+> **Teknik notlar (keşiften, koddan doğrulanmış):**
+> - Mevcut `bullets` dizisi SADECE düşmana atış varsayıyor (`target` = Enemy,
+>   ölümde `killEnemy`) — dungbeetle topu için **ayrı küçük `enemyShots` dizisi**
+>   yazılacak, **`bullets`'a DOKUNULMAYACAK**.
+> - Kraliçe hasarında **üçlü kalıp ŞART**: `hudQueenHP -= X` + `queenFlash = 1` +
+>   `hudQueenHP <= 0 → endGame(score, wave)` kontrolü (kalıp iki mevcut yerde örnekli:
+>   normal düşman yuvaya varış + boss yuvada dövme).
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
