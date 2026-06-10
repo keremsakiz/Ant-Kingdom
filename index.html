@@ -167,6 +167,22 @@ function getEmojiSprite(emoji, fontPx) {
   return spr;
 }
 
+// ===== EMOJİ SPRITE ÖN-ISITMA (stutter fix) =====
+// Yeni emoji+fontPx kombinasyonu ilk çizimde rasterize edilir (cache miss) →
+// spawn anında frame takılması. Çözüm: olası boyutları ÖNCEDEN pişir.
+// Kapsam: SADECE düşman emojileri (normal + mini ×0.6). Boss kod-çizimli, hariç.
+let lastWarmScale = 0, _prevFrameScale = -1, scaleStableFrames = 0;
+function warmEmojiSprites() {
+  // Enemy.draw'daki GERÇEK formülün aynısı (s = camera.scale, mul = sizeMul):
+  // fontPx = Math.round(Math.max(14, Math.round(22 * s)) * mul)
+  const base = Math.max(14, Math.round(22 * camera.scale));
+  for (const t in CONFIG.ENEMIES) {
+    const emoji = CONFIG.ENEMIES[t].emoji;
+    getEmojiSprite(emoji, Math.round(base));        // normal boy (mul=1)
+    getEmojiSprite(emoji, Math.round(base * 0.6));  // mini boy (mul=0.6)
+  }
+}
+
 // ===== ROUNDRECT POLYFILL =====
 function rrect(x, y, w, h, r) {
   ctx.beginPath();
@@ -2755,6 +2771,7 @@ function startGame() {
   nestW = worldFromGrid(NEST_COL, NEST_ROW);
   setupPher();
   centerCamera();
+  warmEmojiSprites(); lastWarmScale = camera.scale; // tüm düşman sprite boyutları baştan hazır
   hoverCol = -1; hoverRow = -1;
 
   // Audio (kullanıcı etkileşimiyle başlat)
@@ -2824,6 +2841,15 @@ function loop(ts) {
     ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
 
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
+
+    // Emoji sprite ön-ısıtma debounce: zoom bitince (ölçek 10 frame sabit) bir kez
+    // ısıt. Pinch SIRASINDA asla çalışmaz (ölçek her frame değişir → sayaç 0'lanır).
+    if (camera.scale === _prevFrameScale) scaleStableFrames++; else scaleStableFrames = 0;
+    _prevFrameScale = camera.scale;
+    if (scaleStableFrames === 10 && camera.scale !== lastWarmScale) {
+      warmEmojiSprites();
+      lastWarmScale = camera.scale;
+    }
 
     // ── Ekran sarsıntısı (P3) — bu frame'in offset'i + dt-ölçekli sönüm ──
     // İlk çizimden ÖNCE hesapla ki toScreen/screenFromWorld tutarlı offset alsın.
