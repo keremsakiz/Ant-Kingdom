@@ -2467,9 +2467,6 @@ class Enemy {
     this.isMini    = false;                         // mini spider bayrağı (pool yeniden kullanımda eskisi taşınmasın)
     this.sizeMul   = 1;                             // çizim boyut çarpanı (mini spider 0.6, diğerleri 1)
     this.webTimer  = 0;                             // SPIDER ağ bırakma periyot sayacı (dts; spider değilse kullanılmaz)
-    this.diveTimer = 0;                             // BIRD dalış periyot sayacı (dts; bird değilse kullanılmaz)
-    this.diveState = 0;                             // BIRD 0=süzülme, 1=dalış (bird değilse kullanılmaz)
-    this.liftBase  = 18;                            // BIRD uçuş yüksekliği tabanı (px; draw'da yumuşak alçalma)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2493,26 +2490,6 @@ class Enemy {
     // Moat yavaşlatma × ağ hızlandırma (spider ağlı tile'da 1.4) — tile bazlı, o frame'lik.
     // BIRD uçar: moat üstünden geçer, yavaşlamaz (ağ çarpanı spider-dışında zaten 1).
     this.slowMul = (this.type === 'bird') ? 1 : moatSlowAt(this.wx, this.wy) * webMulAt(this.wx, this.wy, this.type);
-
-    // BIRD dalış döngüsü (boss atkTimer deseni): ~4sn süzül → ~1sn dalış (hız ×2).
-    // speed alanı KALICI değişmez; çarpan o frame'lik slowMul üzerinden step'e geçer.
-    if (this.type === 'bird') {
-      this.diveTimer += dts;
-      if (this.diveState === 0) {
-        if (this.diveTimer >= 150) { // 150 dts ≈ 2.5sn @60fps → dalış başlar (kısa ömründe 2-3 dalış)
-          this.diveState = 1; this.diveTimer = 0;
-          sndBird();
-          floatTexts.push({ wx: this.wx, wy: this.wy, life: 1.0, text: '!', color: '#ffd24a' });
-        }
-      } else if (this.diveTimer >= 60) { // dalış ~1sn (60 dts) sürer → süzülmeye dön
-        this.diveState = 0; this.diveTimer = 0;
-      }
-      if (this.diveState === 1) this.slowMul *= 1.6; // ×2 yuvaya çok çabuk vardırıyordu
-      // Alçalma görseli: hedef yüksekliğe yumuşak yaklaşım (lerp — ani zıplama yok)
-      const tgtLift = (this.diveState === 1) ? 2 : 18;
-      this.liftBase += (tgtLift - this.liftBase) * 0.06 * dts; // ~0.6sn'de otursun, süzülerek
-    }
-
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.angle += aDiff(des, this.angle) * 0.12 * dts;
     this.step(dts);
@@ -2612,8 +2589,7 @@ class Enemy {
 
     // BIRD uçuş yüksekliği: gövde + HP barı yukarı süzülür, gölge YERDE kalır.
     // Salınım mevcut wig'den (yeni zaman kaynağı yok); bird-dışında 0 → çıktı birebir aynı.
-    // Taban update'te lerp'lenen liftBase (süzülme ~18, dalışta ~2'ye yumuşak iner).
-    const lift = (this.type === 'bird') ? (this.liftBase + Math.sin(this.wig * 0.1) * 4) * s : 0;
+    const lift = (this.type === 'bird') ? (18 + Math.sin(this.wig * 0.1) * 4) * s : 0;
 
     if (this.isBoss) {
       // Boss: kod-çizimli devasa oynak akrep (emoji yok). Kendi gölgesini de çizer.
