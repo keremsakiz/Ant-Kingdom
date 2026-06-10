@@ -1218,6 +1218,67 @@ function moatSlowAt(wx, wy) {
   return 1;
 }
 
+// ===== SPIDER AĞ OTOYOLU (Faz 2B Spider P2) =====
+// Spider yürürken tile'lara KALICI ağ izi bırakır; spider'lar (mini dahil)
+// ağ üstünde hızlanır. FIFO sınırı: WEB_MAX aşılınca en eski iz silinir.
+const spiderWebs = [];     // {gx, gy, wx, wy} — tile merkezli ağ izleri
+const webSet = new Set();  // hızlı lookup anahtarı: gx+','+gy
+const WEB_MAX = 120;
+const WEB_SPEED_MUL = 1.4; // spider'ın ağ üstündeki hız çarpanı
+
+/** Bulunulan tile'a ağ izi bırak (zaten varsa no-op; WEB_MAX doluysa en eski FIFO silinir). */
+function addSpiderWeb(wx, wy) {
+  const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
+  const gx = Math.round(wx / TW + wy / TH);
+  const gy = Math.round(wy / TH - wx / TW);
+  const key = gx + ',' + gy;
+  if (webSet.has(key)) return;
+  if (spiderWebs.length >= WEB_MAX) {
+    const old = spiderWebs.shift();
+    webSet.delete(old.gx + ',' + old.gy);
+  }
+  const c = worldFromGrid(gx, gy);
+  spiderWebs.push({ gx, gy, wx: c.x, wy: c.y });
+  webSet.add(key);
+}
+
+/** Ağ hız çarpanı: SADECE spider tipi, ağlı tile üstündeyken WEB_SPEED_MUL; aksi 1. */
+function webMulAt(wx, wy, type) {
+  if (type !== 'spider') return 1;
+  const TW = CONFIG.TILE.W, TH = CONFIG.TILE.H;
+  const gx = Math.round(wx / TW + wy / TH);
+  const gy = Math.round(wy / TH - wx / TW);
+  return webSet.has(gx + ',' + gy) ? WEB_SPEED_MUL : 1;
+}
+
+/** Ağ izleri: tile merkezinde yarı saydam izometrik ağ (6 ışın + 2 basık halka).
+ *  Zemin üstüne, binaların/birimlerin ALTINA çizilir (loop'ta drawPheromone sonrası).
+ *  120 adet her frame çizilir → hepsi TEK path'te toplanıp tek stroke ile basılır. */
+function drawSpiderWebs() {
+  if (!spiderWebs.length) return;
+  const s = camera.scale, R = 11 * s;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = '#e8e8f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const w of spiderWebs) {
+    const p = screenFromWorld(w.wx, w.wy);
+    if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue; // ekran dışını atla
+    for (let i = 0; i < 6; i++) { // 6 ışın (izometrik: dikey yarıya basık)
+      const a = i * Math.PI / 3;
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + Math.cos(a) * R, p.y + Math.sin(a) * R * 0.5);
+    }
+    for (const f of [0.5, 0.85]) { // 2 eşmerkezli basık halka (elips açı 0'dan başlar → bağ çizgisi olmaz)
+      ctx.moveTo(p.x + R * f, p.y);
+      ctx.ellipse(p.x, p.y, R * f, R * f * 0.5, 0, 0, Math.PI * 2);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
  * Healer (alarm) sınırı: yuva menzilindeki healer'lardan yalnız EN FAZLA 3'ü
  * (en eski kurulan, uid sıralı) kraliçeyi iyileştirebilir. Fazlası boşa gider.
@@ -2389,6 +2450,7 @@ class Enemy {
     this.atNest    = false;                         // BOSS yuvaya vardı mı (yuvada durup kraliçeyi döver; boss değilse kullanılmaz)
     this.isMini    = false;                         // mini spider bayrağı (pool yeniden kullanımda eskisi taşınmasın)
     this.sizeMul   = 1;                             // çizim boyut çarpanı (mini spider 0.6, diğerleri 1)
+    this.webTimer  = 0;                             // SPIDER ağ bırakma periyot sayacı (dts; spider değilse kullanılmaz)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2409,11 +2471,20 @@ class Enemy {
       return;
     }
 
-    // Moat: tile üstündeyken bu frame yavaşla, ayrılınca otomatik normale döner.
-    this.slowMul = moatSlowAt(this.wx, this.wy);
+    // Moat yavaşlatma × ağ hızlandırma (spider ağlı tile'da 1.4) — tile bazlı, o frame'lik.
+    this.slowMul = moatSlowAt(this.wx, this.wy) * webMulAt(this.wx, this.wy, this.type);
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
     this.angle += aDiff(des, this.angle) * 0.12 * dts;
     this.step(dts);
+
+    // SPIDER: yürürken ~0.75sn'de bir bulunduğu tile'a kalıcı ağ izi bırakır.
+    if (this.type === 'spider') {
+      this.webTimer += dts;
+      if (this.webTimer >= 45) { // 45 dts ≈ 0.75sn @60fps
+        this.webTimer = 0;
+        addSpiderWeb(this.wx, this.wy);
+      }
+    }
 
     // BOSS: yürürken ~2sn'de bir alan saldırısı (bina hasarı). Normal düşman ETKİLENMEZ.
     if (this.isBoss) {
@@ -2706,6 +2777,8 @@ function startGame() {
   nestUpgradeCount = 0;
   cancelLongPress();
   buildPulses.length = 0;
+  spiderWebs.length = 0;
+  webSet.clear();
   floatTexts.length = 0;
   bullets.length = 0;
   enemies.length = 0;
@@ -2797,6 +2870,9 @@ function loop(ts) {
 
     // Layer 2: Feromon overlay
     drawPheromone();
+
+    // Layer 2.5: Spider ağ izleri (zemin/feromon üstü, binaların/birimlerin altı)
+    drawSpiderWebs();
 
     // Update ants + enemies (logic) before depth-sorted draw
     _enemyLoad.clear(); // her frame sıfırla — soldier hedef-yük dağılımı (bkz. updateGuard)
