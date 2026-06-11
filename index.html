@@ -2495,7 +2495,8 @@ class Enemy {
 
     // LADYBUG şifa pulsu (boss atkTimer deseni): ~3sn'de bir, 60px içindeki DİĞER
     // aktif düşmanlara +6 hp (maxHp clamp). En az 1 iyileşme olursa pembe halka + ses.
-    if (this.type === 'ladybug') {
+    // SADECE ana ladybug pulse atar — mini refakatçiler (isMini) atmaz.
+    if (this.type === 'ladybug' && !this.isMini) {
       this.healTimer += dts;
       if (this.healTimer >= 180) { // 180 dts ≈ 3sn @60fps
         this.healTimer = 0;
