@@ -2469,6 +2469,8 @@ class Enemy {
     this.sizeMul   = 1;                             // çizim boyut çarpanı (mini spider 0.6, diğerleri 1)
     this.webTimer  = 0;                             // SPIDER ağ bırakma periyot sayacı (dts; spider değilse kullanılmaz)
     this.healTimer = 0;                             // LADYBUG şifa pulsu periyot sayacı (dts; ladybug değilse kullanılmaz)
+    this.ballSize  = 0;                             // DUNGBEETLE topu 0..1 büyüme oranı (dungbeetle değilse kullanılmaz)
+    this.ballGrow  = 0;                             // DUNGBEETLE topu büyüme sayacı (dts)
   }
   /** Düz steering ile yuva merkezine yürü; ulaşınca kraliçeye hasar ver. */
   update(dts) {
@@ -2517,6 +2519,13 @@ class Enemy {
           sndHeal();
         }
       }
+    }
+
+    // DUNGBEETLE (Faz2B P1): yürürken önündeki top büyür, ~4 saniyede full (240 dts).
+    // Fırlatma/hasar YOK (sonraki parça). isMini guard ihtiyaten (ladybug dersi).
+    if (this.type === 'dungbeetle' && !this.isMini) {
+      this.ballGrow += dts;
+      this.ballSize = Math.min(1, this.ballGrow / 240);
     }
 
     const des = Math.atan2(nestW.y - this.wy, nestW.x - this.wx);
@@ -2634,6 +2643,24 @@ class Enemy {
       ctx.globalAlpha = 1;
 
       ctx.drawImage(spr.canvas, sp.x - spr.size / 2, sp.y - lift - spr.size / 2, spr.size, spr.size);
+
+      // DUNGBEETLE topu (Faz2B P1): gövdenin ÖNÜNDE büyüyen kahverengi top
+      // (gerçek bok böceği gibi iterek). Lekeler wig ile döner → yuvarlanma hissi.
+      if (this.type === 'dungbeetle' && this.ballSize > 0.05) {
+        const bwx = this.wx + Math.cos(this.angle) * 16;
+        const bwy = this.wy + Math.sin(this.angle) * 16;
+        const bp  = screenFromWorld(bwx, bwy);
+        const br  = (4 + 8 * this.ballSize) * s * mul;
+        ctx.fillStyle = '#6b4a2a';
+        ctx.beginPath(); ctx.arc(bp.x, bp.y, br, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#4a3018';
+        for (let k = 0; k < 2; k++) {
+          const a = this.wig * 0.5 + k * Math.PI;
+          ctx.beginPath();
+          ctx.arc(bp.x + Math.cos(a) * br * 0.5, bp.y + Math.sin(a) * br * 0.5, Math.max(1, br * 0.22), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
 
     // HP barı (yeşil→kırmızı, zoom'a ölçekli, gradient/shadow yok). Boss daha büyük → bar geniş ve yukarıda.
