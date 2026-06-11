@@ -1144,7 +1144,7 @@ let nestMenu    = null; // Yuva menüsü (Faz: yuva HP upgrade) — true iken a�
 let buildPulses = [];   // { wx, wy, life } — yeşil yerleştirme dalgası
 let floatTexts  = [];   // { wx, wy, life, text, color } — upgrade anı yükselen "Sv X!"
 let bullets     = [];   // ranger mermileri { wx, wy, vx, vy, dmg, target } — TEK HEDEF
-let enemyShots  = [];   // dungbeetle topları { wx, wy, vx, vy, dmg, tgtB (Building ref), size, life } — bullets'tan AYRI
+let enemyShots  = [];   // dungbeetle topları { wx, wy, vx, vy, dmg, tgtB (Building|null), isNest, size, life } — bullets'tan AYRI
 
 // Faz 3C: seviye çarpanları. Index = level-1. Hem etki hem maxHP için kullanılır.
 //   sv1 ×1.0, sv2 ×1.4, sv3 ×1.9  (tower hasarı/healer şifası artar, barracks
@@ -1933,19 +1933,29 @@ function updateEnemyShots(dts) {
   for (let i = enemyShots.length - 1; i >= 0; i--) {
     const m = enemyShots[i];
     const b = m.tgtB;
-    // Hedef bina yıkılmış/listeden çıkmışsa top düşer
-    if (!b || b.hp <= 0 || !buildings.includes(b)) { enemyShots.splice(i, 1); continue; }
+    // Bina hedefli shot: hedef yıkılmış/listeden çıkmışsa top düşer.
+    // isNest shot'ında tgtB null — bu kontrol atlanır (yuva yok olmaz).
+    if (!m.isNest && (!b || b.hp <= 0 || !buildings.includes(b))) { enemyShots.splice(i, 1); continue; }
     m.life -= dts; // sonsuz uçuş koruması (~10sn @60fps)
     if (m.life <= 0) { enemyShots.splice(i, 1); continue; }
     m.wx += m.vx * dts;
     m.wy += m.vy * dts;
-    const w = worldFromGrid(b.gridX, b.gridY);
+    const w = m.isNest ? nestW : worldFromGrid(b.gridX, b.gridY);
     const dx = w.x - m.wx, dy = w.y - m.wy;
     if (dx * dx + dy * dy < 14 * 14) { // çarpma
-      b.hp -= m.dmg;
-      floatTexts.push({ wx: m.wx, wy: m.wy, life: 1.0, text: '-' + m.dmg, color: '#ff8a3a' });
-      burst(m.wx, m.wy, '#6b4a2a', 10);
-      if (b.hp <= 0) destroyBuildingByEnemy(b);
+      if (m.isNest) {
+        // ÜÇLÜ KALIP (boss yuvada dövme deseni): HP düş + flash + endGame kontrolü
+        hudQueenHP -= m.dmg;
+        queenFlash = 1;
+        floatTexts.push({ wx: nestW.x, wy: nestW.y, life: 1.0, text: '-' + m.dmg, color: '#ff5a4a' });
+        burst(nestW.x, nestW.y, '#6b4a2a', 12);
+        if (hudQueenHP <= 0) { hudQueenHP = 0; endGame(score, wave); }
+      } else {
+        b.hp -= m.dmg;
+        floatTexts.push({ wx: m.wx, wy: m.wy, life: 1.0, text: '-' + m.dmg, color: '#ff8a3a' });
+        burst(m.wx, m.wy, '#6b4a2a', 10);
+        if (b.hp <= 0) destroyBuildingByEnemy(b);
+      }
       enemyShots.splice(i, 1);
     }
   }
@@ -2582,15 +2592,23 @@ class Enemy {
           const d2 = dx * dx + dy * dy;
           if (d2 < bestD2) { best = b; bestD2 = d2; }
         }
+        // Hedef: önce en yakın bina (P2); menzilde bina YOKSA yuva (240px, P3);
+        // ikisi de menzil dışıysa top dolu bekler (her frame yeniden dener).
+        let tw = null, isNest = false;
         if (best) {
+          tw = worldFromGrid(best.gridX, best.gridY);
+        } else {
+          const dxN = nestW.x - this.wx, dyN = nestW.y - this.wy;
+          if (dxN * dxN + dyN * dyN < 240 * 240) { tw = nestW; isNest = true; }
+        }
+        if (tw) {
           const bwx = this.wx + Math.cos(this.angle) * 16; // P1'deki top konumu
           const bwy = this.wy + Math.sin(this.angle) * 16;
-          const tw = worldFromGrid(best.gridX, best.gridY);
           const d = Math.hypot(tw.x - bwx, tw.y - bwy) || 1;
           enemyShots.push({
             wx: bwx, wy: bwy,
             vx: (tw.x - bwx) / d * 3.5, vy: (tw.y - bwy) / d * 3.5, // ~3.5 px/dts
-            dmg: 25, tgtB: best, size: 12, life: 600
+            dmg: 25, tgtB: best, isNest, size: 12, life: 600 // isNest'te best=null
           });
           this.ballSize = 0; this.ballGrow = 0; // top atıldı, yeniden büyür
         }
