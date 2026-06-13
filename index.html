@@ -80,6 +80,15 @@ const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "sq
 const sndBird    = () => { beep(1200, 0.12, "sawtooth", 0.16); beep(700, 0.15, "sawtooth", 0.14); }; // alçalan iki tonlu kısa çığlık (dalış)
 const sndBoom    = () => { beep(90, 0.18, "sawtooth", 0.2); beep(60, 0.3, "square", 0.16); }; // boss alan saldırısı darbesi
 const sndHeal    = () => beep(900, 0.1, "sine", 0.08); // ladybug şifa pulsu (hafif pozitif bip)
+// Power-up toplama: 3-notalı YÜKSELEN parlak arpej (~65ms ardışık → akor değil arpej hissi).
+// Frekans boşluğu ~1150 üstü + 3 ardışık nota hiçbir seste yok → diğerlerinden net ayrışır.
+function sndPowerup(kind) {
+  const wave = (kind === 'speed') ? 'square' : 'triangle'; // speed parlak, egg yumuşak
+  const top  = (kind === 'speed') ? 1319 : 1175;           // speed tepe E6, egg biraz daha yumuşak D6
+  beep(784, 0.08, wave, 0.10);
+  setTimeout(() => beep(988, 0.08, wave, 0.10), 65);
+  setTimeout(() => beep(top, 0.10, wave, 0.10), 130);
+}
 const melody = [392, 440, 523, 440, 392, 330, 392, 294]; let mi = 0;
 function startMusic() {
   if (!actx || !soundOn) return; stopMusic();
@@ -1190,7 +1199,7 @@ function collectPowerup(p) {
   }
   // Toplama geri bildirimi: yerinde parlama halkası + ses (yeni ses/efekt üretmeden)
   buildPulses.push({ wx: p.wx, wy: p.wy, life: 1, c: p.kind === 'speed' ? '#ffd24a' : '#fff6e0', maxR: 60 });
-  sndDeposit();
+  sndPowerup(p.kind);
 }
 
 // ===== BUILDINGS =====
