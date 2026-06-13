@@ -220,6 +220,54 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
 
 > **ÖNEMLİ NOT — karınca hp/ölüm:** Karıncalarda **hp/ölüm mekaniği YOK** (koddan doğrulandı — `Ant`'ta hp alanı yok, hiçbir yer `ant.active=false` yapmıyor). Akrep alan saldırısı **şimdilik SADECE binaya** vuruyor. Karınca HP+ölüm **bilinçli ertelendi** — ertelenen **karınca AI/çok-tile workstream'iyle BİRLİKTE** yapılacak; o zaman akrep saldırısına "karıncaya da vur" eklemek **tek satır** (aynı yarıçap döngüsüne `ants` taraması).
 
+### Faz 4 — Ana Menü Cila P1 (TAMAMLANDI, mobil doğrulandı)
+- **Skor kartı arkası**: `drawMenu`'da "🏆 En İyi Skorlar" + 3 skor satırının arkasına yarı
+  saydam yuvarlak köşeli panel (`rrect`, r=12, genişlik `W*0.62`, W/2 merkezli). Dolgu
+  `rgba(28,19,10,0.55)`, kenarlık `rgba(255,224,143,0.18)` lineWidth 1 (sıcak çerçeve). Panel
+  ÖNCE, metin SONRA. Skor yoksa panel hiç çizilmez (boş-menü davranışı korundu).
+- **Dikey denge**: skor başlığı `H*0.46 → H*0.50` (tek kaynak `scoreY`, satırlar+panel onunla
+  kayar), BAŞLA butonu `by: H*0.65 → H*0.62` (P1-fix'te 0.72'den geri çekildi). Lejant `H*0.82` sabit.
+- **Dekoratif karıncalar**: zaten en alt katmandaydı; `globalAlpha 0.13 → 0.08` düşürüldü
+  (metin/panel okunabilirliği). `menuStartBtn` hit-test `by`'yi doğrudan kullandığı için otomatik tutarlı.
+
+### Faz 4 — Power-up Sistemi (YENİ — tam çalışır, koddan doğrulandı)
+**Tap-to-collect power-up'lar. `foods`'tan TAMAMEN AYRI paralel sistem.**
+- **Dizi**: `powerups = []`, öğe `{ wx, wy, kind, age, uid }`, `kind ∈ 'speed' | 'egg'`.
+- **Spawn**: `spawnPowerup()` — `spawnFood` ile aynı iç-bölge tile seçimi (kenar/nest hariç),
+  %50 speed / %50 egg, **harita CAP 3**. Loop'ta accumulator deseni (`powerupTimer += dt;
+  >= 12000 → spawn`), yani **~12sn periyot**; `startGame`'de `powerups.length=0; powerupTimer=0`.
+  (Countdown yerine accumulator: startGame=0 + ilk spawn ~12sn + foods-paralel direktifini birlikte sağlar.)
+- **Çizim**: `drawPowerup(p)` — **programatik, emoji DEĞİL**. Zemin gölgesi + bob salınımı
+  (`sin(age*0.005)`) + nabızlı parlak halka. **speed** = altın disk (`#ffd24a`) + şimşek poligonu;
+  **egg** = krem oval (`#f5ead0`) + kontur + parlama. **Görsel r=11**, dünya px. Depth-sort'a `t:2`
+  ile entegre (dispatch ÜÇ dallı: `t===0 food / t===2 powerup / else .draw()`).
+- **Tap-collect**: `onPlayingTap` EN BAŞINA guard'lı blok — `!radialMenu && !upgradeMenu &&
+  !nestMenu` iken ekran→dünya çevir, **tap HIT_R=26** (görünmez geniş alan, parmak-dostu), denk
+  gelen power-up'ı topla + **early return**. Bina kurma/yükseltme/yuva menü mantığı BOZULMADI.
+  Pointer listener'lara DOKUNULMADI.
+- **Etkiler** (`collectPowerup(p)`):
+  - **⚡ speed**: `speedTimer = 6000` (ms). Çarpan zaten hazırdı (`Ant.get speed`, `SPEED_BOOST=1.7`).
+    **YENİ decrement loop**: loop'ta karınca update'inden ÖNCE `if (speedTimer > 0) speedTimer -= dt;`
+    → boost **~6sn sonra biter** (kalıcı değil).
+  - **🥚 egg**: `for 3: if (antCount() < CONFIG.ANT.MAX) spawnAnt('worker')` — MAX 80 kontrollü,
+    `spawnAnt` null dönerse sessiz. Ant AI'ya dokunmaz.
+  - Geri bildirim: yerinde `buildPulses` halkası (speed altın / egg krem) + `sndPowerup(p.kind)`.
+- **Ses**: `sndPowerup(kind)` — 3-notalı **yükselen arpej** (`784 → 988 → tepe`, ~65ms ardışık
+  `setTimeout`). speed = square / tepe 1319 (E6, parlak); egg = triangle / tepe 1175 (D6, yumuşak).
+  `beep` helper'ı üzerinden (mute/`soundOn` otomatik). Frekans boşluğu ~1150 üstü + 3 ardışık nota
+  hiçbir seste yok → diğerlerinden net ayrışır.
+
+### Faz 4 — Lejant Dürüstlük (TAMAMLANDI)
+- `drawMenu` lejant satırları gerçeğe çekildi. **🛡 Kalkan ÇIKARILDI** (implement edilmedi —
+  aşağıdaki nota bak). Düşman listesi `unlockWave` sırasına göre tamamlandı: **🐜 enemyant + 🦂 boss
+  eklendi**. 6 düşman 390px'e tek satıra sığmadığı için tehditler **3+3 iki satıra** bölündü
+  (H*0.82+20 ve +40); font/renk (12px) aynı.
+
+> **NOT — 🛡 Kalkan bilinçle ATLANDI:** `shieldTimer` sadece görsel halka çiziyor; karıncalarda
+> HP/ölüm olmadığı için koruyacak bir şey yok. **`shieldTimer` için decrement loop EKLENMEDİ**
+> (sadece `speedTimer`'a eklendi). Kalkan, ertelenen **karınca HP/ölüm workstream'i** gelince
+> implement edilip lejanta geri eklenecek.
+
 ### localStorage Skor Sistemi — TAMAMLANDI (kod-doğrulandı, test edildi)
 localStorage skor sistemi zaten tam implement edilmiş ve test edildi (Live Server'da F5
 sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `drawGameover` +
@@ -254,15 +302,14 @@ sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `dra
 ## 3. SON COMMIT'LER
 
 ```
+7deedf1 Faz4 Menu P2c: lejant durust (kalkan cikti, enemyant+boss eklendi)
+b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
+8cd334a Faz4 Powerup P2b: hiz+yumurta etki, boyut rotus
+a710be4 Faz4 Powerup P2a: powerups dizisi + cizim + tap-collect (etki yok)
+dc0a256 Faz4 Menu P1-fix: buton yukari + dekor karinca arka katman
+4593b2c Faz4 Menu P1: skor karti + dikey denge
+82fed05 docs: DURUM.md localStorage skor TAMAMLANDI, Faz4 kapsam guncel
 4a619b1 Faz2B Dungbeetle P3: yuva hedefi (uclu kalip) + DURUM.md guncel
-ab90d34 Faz2B Dungbeetle P2: top firlatma + enemyShots (en yakin bina, 25 hasar)
-847ebf1 Faz2B Dungbeetle P1: buyuyen top gorseli onde, 4sn full (ballSize)
-294a2f5 Faz2B Ladybug P2: sifa pulsu sadece ana ladybug (isMini guard)
-e9c921b docs: DURUM.md Bird+Ladybug durumu, dungbeetle top plani
-84de777 Faz2B Ladybug P1: 2 mini refakatci (isMini, 0.6 boyut, zincir kesik)
-c1ed745 Faz2B Ladybug: sifa pulsu (3sn, R60, +6hp, pembe halka)
-105e95f docs: DURUM.md Bird final
-94f6daa Faz2B Bird final: dalis kaldirildi, ucus korundu
 ```
 > **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Bird + Ladybug P1 dahil
 > `e9c921b`'ye kadar her şey merge + push edilmiş durumda (eski "origin'den ileride"
@@ -294,16 +341,22 @@ c1ed745 Faz2B Ladybug: sifa pulsu (3sn, R60, +6hp, pembe halka)
      topunun karınca hedeflemesi) HÂLÂ ertelenmiş — karınca hp/ölüm mekaniğiyle,
      karınca AI workstream'iyle birlikte gelecek.
 
-3. **Faz 4**: (a) ana menü/HUD cila, (b) ses genişletme. **localStorage skor DÜŞÜLDÜ**
-   (zaten tam implement + test edildi, bkz. Bölüm 2 "localStorage Skor Sistemi").
+3. **Faz 4** — kısmen tamamlandı:
+   - ~~**Ana menü cila**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 4 — Ana Menü Cila P1": skor kartı +
+     dikey denge + dekor karınca arka katman) ve lejant dürüstlük güncellemesi.
+   - ~~**Power-up sistemi**~~ — **✓ TAMAMLANDI** (YENİ, bkz. Bölüm 2 "Faz 4 — Power-up Sistemi":
+     ⚡ hız + 🥚 yumurta, tap-to-collect, programatik çizim, sndPowerup arpeji).
+   - **localStorage skor** — DÜŞÜLDÜ (zaten tam implement + test edildi).
+   - **Kalan**: (a) **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme),
+     (b) **ses genişletme** (temel Web Audio + sndPowerup var; ek efekt/karışım/cila).
 
 > **SIRADAKİ ÖNCELİK — Kerem karar verecek (iki aday):**
 > 1. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
 >    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
 >    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
 >    aynı temelin üstüne tek satırlık eklemeler olur.
-> 2. **Faz 4** — (a) ana menü/HUD cila, (b) ses genişletme (temel Web Audio zaten var).
->    **localStorage skor DÜŞÜLDÜ** (zaten tam implement + test edildi).
+> 2. **Faz 4** — ana menü cila + power-up sistemi + lejant **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**,
+>    (b) **ses genişletme** (temel Web Audio + sndPowerup var). localStorage skor düşüldü.
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
