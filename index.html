@@ -598,18 +598,29 @@ function drawMenu() {
   // Top skorlar
   const scores = getTopScores().slice(0, 3);
   if (scores.length) {
+    const scoreY = H * 0.50;                 // başlık taban çizgisi (tek kaynak)
+    const lastRowY = scoreY + 22 + 2 * 20;   // son skor satırı tabanı
+
+    // Kart arkası — ÖNCE panel, SONRA metin (metin üstte kalsın)
+    const pw   = W * 0.62, px = W / 2 - pw / 2;
+    const ptop = scoreY - 26;                // başlıktan ~14px yukarı pay
+    const pbot = lastRowY + 14;              // son satırdan ~14px aşağı pay
+    rrect(px, ptop, pw, pbot - ptop, 12);
+    ctx.fillStyle = 'rgba(28,19,10,0.55)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,224,143,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+
     ctx.fillStyle = '#ffe08f';
     ctx.font = 'bold 13px -apple-system, sans-serif';
-    ctx.fillText('🏆 En İyi Skorlar', W / 2, H * 0.46);
+    ctx.fillText('🏆 En İyi Skorlar', W / 2, scoreY);
     ctx.font = '13px -apple-system, sans-serif';
     ctx.fillStyle = '#d4b896';
     scores.forEach((s, i) =>
-      ctx.fillText(`${i + 1}.  ${s.score} puan  —  Dalga ${s.wave}`, W / 2, H * 0.46 + 22 + i * 20));
+      ctx.fillText(`${i + 1}.  ${s.score} puan  —  Dalga ${s.wave}`, W / 2, scoreY + 22 + i * 20));
   }
 
   // Başla butonu
   const bw = 220, bh = 60;
-  const bx = W / 2 - bw / 2, by = H * 0.65;
+  const bx = W / 2 - bw / 2, by = H * 0.72;
   menuStartBtn = { x: bx, y: by, w: bw, h: bh };
   ctx.fillStyle = '#7cc36b';
   rrect(bx, by, bw, bh, 14); ctx.fill();
