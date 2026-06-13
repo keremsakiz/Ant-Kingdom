@@ -205,6 +205,7 @@ let state = 'MENU';
 let lastScore = 0, lastWave = 1, prevBest = 0;
 let food = 0;          // collected food resource
 let foodSpawnTimer = 0; // ms accumulator for periodic food spawn
+let powerupTimer   = 0; // ms accumulator for periodic power-up spawn (yemden çok daha nadir)
 const FOOD_MIN_MAP   = 6;   // respawn threshold
 const FOOD_SPAWN_MS  = 3000; // periodic interval ms
 const FOOD_MAX_AGE_MS = 20000; // uncollected food expires after 20s
@@ -999,6 +1000,21 @@ function drawAntShape(x, y, angle, wig, bodyColor, scale) {
 
 // ===== PLAYING TILE TAP =====
 function onPlayingTap(x, y) {
+  // Power-up tap-collect — açık menü YOKKEN, tile karar ağacından ÖNCE (en güvenli nokta).
+  // Power-up'a denk gelen tap erken return → bina kurma/yükseltme tetiklenmez.
+  if (!radialMenu && !upgradeMenu && !nestMenu) {
+    const wx = (x - camera.x) / camera.scale, wy = (y - camera.y) / camera.scale;
+    const HIT_R = 26; // dünya px, parmak-dostu
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const dx = wx - powerups[i].wx, dy = wy - powerups[i].wy;
+      if (dx * dx + dy * dy < HIT_R * HIT_R) {
+        collectPowerup(powerups[i]);
+        powerups.splice(i, 1);
+        return;
+      }
+    }
+  }
+
   // Radyal menü (boş tile kurma) açıksa — önce menüyle etkileş
   if (radialMenu) {
     const hit = radialHit(x, y);
@@ -1123,6 +1139,7 @@ const TYPES = {
   candy: { pts: 5, r: 6, c: "#e0b85a", c2: "#ffe08f", speed: 0.85 }
 };
 let foods = [];
+let powerups = []; // her öğe: { wx, wy, kind, age, uid } — kind ∈ 'speed' | 'egg'
 
 /**
  * Spawn one food item. If col/row omitted, picks a random non-nest tile in
@@ -1144,6 +1161,29 @@ function spawnFood(col, row, type) {
   const jx = (Math.random() - 0.5) * CONFIG.TILE.W * 0.4;
   const jy = (Math.random() - 0.5) * CONFIG.TILE.H * 0.4;
   foods.push({ wx: w.x + jx, wy: w.y + jy, type, age: 0, uid: _uid++ });
+}
+
+/**
+ * Spawn one power-up on a random INTERIOR tile (kenar halkası hariç — spawnFood
+ * ile aynı tile seçimi). kind: %50 'speed', %50 'egg'. Haritada en fazla 3.
+ */
+function spawnPowerup() {
+  if (powerups.length >= 3) return; // CAP: en fazla 3 power-up
+  const cLo = 1, cHi = CONFIG.GRID.COLS - 2;
+  const rLo = 1, rHi = CONFIG.GRID.ROWS - 2;
+  let col, row, tries = 0;
+  do {
+    col = cLo + Math.floor(Math.random() * (cHi - cLo + 1));
+    row = rLo + Math.floor(Math.random() * (rHi - rLo + 1));
+  } while (grid[row][col].type === 'nest' && ++tries < 30);
+  const w = worldFromGrid(col, row);
+  const kind = Math.random() < 0.5 ? 'speed' : 'egg';
+  powerups.push({ wx: w.x, wy: w.y, kind, age: 0, uid: _uid++ });
+}
+
+/** P2a: SADECE iskelet — ETKİ YOK. P2b'de 'speed'→speedTimer, 'egg'→spawnAnt eklenecek. */
+function collectPowerup(p) {
+  if (typeof sndFood === 'function') sndFood(); // geçici: mevcut yem sesini kullan
 }
 
 // ===== BUILDINGS =====
@@ -2463,6 +2503,53 @@ function drawFood(f) {
   ctx.fillStyle = t.c;  ctx.beginPath(); ctx.arc(s.x, s.y, t.r * cam, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(s.x - t.r * 0.3 * cam, s.y - t.r * 0.3 * cam, t.r * 0.4 * cam, 0, Math.PI * 2); ctx.fill();
 }
+/** Programatik power-up çizimi (emoji YOK): zemin gölgesi + bob + parlak halka + kind şekli. */
+function drawPowerup(p) {
+  const cam = camera.scale;
+  const bob = Math.sin(p.age * 0.005) * 3;          // yukarı-aşağı salınım (dünya px)
+  const s   = screenFromWorld(p.wx, p.wy - bob);    // gövde (bob'lu)
+  const sg  = screenFromWorld(p.wx, p.wy);          // gölge (yerde sabit)
+  const r   = 14 * cam;
+
+  // Zemin gölgesi
+  ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(sg.x, sg.y + 3 * cam, r * 0.8, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Toplanabilir parlak halka (alpha nabzı)
+  const pulse = 0.30 + 0.30 * (0.5 + 0.5 * Math.sin(p.age * 0.008));
+  ctx.globalAlpha = pulse;
+  ctx.strokeStyle = p.kind === 'speed' ? '#ffe08f' : '#fff6e0';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(s.x, s.y, r + 4 * cam, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (p.kind === 'speed') {
+    // Altın taban disk
+    ctx.fillStyle = '#ffd24a';
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c8962a'; ctx.lineWidth = 1.5; ctx.stroke();
+    // Şimşek (zig-zag poligon)
+    ctx.fillStyle = '#fffbe0';
+    ctx.beginPath();
+    ctx.moveTo(s.x + 2.0 * cam, s.y - 7 * cam);
+    ctx.lineTo(s.x - 4.0 * cam, s.y + 1 * cam);
+    ctx.lineTo(s.x - 0.5 * cam, s.y + 1 * cam);
+    ctx.lineTo(s.x - 2.0 * cam, s.y + 7 * cam);
+    ctx.lineTo(s.x + 4.0 * cam, s.y - 1 * cam);
+    ctx.lineTo(s.x + 0.5 * cam, s.y - 1 * cam);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#9a6a10'; ctx.lineWidth = 0.8; ctx.stroke();
+  } else {
+    // Yumurta: krem oval (hafif uzun) + ince kontur
+    ctx.fillStyle = '#f5ead0';
+    ctx.beginPath(); ctx.ellipse(s.x, s.y, r * 0.72, r * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c9b68a'; ctx.lineWidth = 1.2; ctx.stroke();
+    // Üst parlama
+    ctx.fillStyle = '#fffdf6';
+    ctx.beginPath(); ctx.ellipse(s.x - r * 0.2, s.y - r * 0.35, r * 0.22, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
 /** Update + draw particles (world space) */
 function drawParticles(dts) {
   for (const p of particles) {
@@ -2965,6 +3052,7 @@ function startGame() {
   antBirthTimer = 0;
   ants.length = 0;
   foods.length = 0;
+  powerups.length = 0; powerupTimer = 0;
   particles.length = 0;
   speedTimer = 0; shieldTimer = 0;
   buildings.length = 0;
@@ -3058,6 +3146,11 @@ function loop(ts) {
     foodSpawnTimer += dt;
     if (foodSpawnTimer >= FOOD_SPAWN_MS) { foodSpawnTimer = 0; spawnFood(); }
 
+    // ── Power-up yönetimi (yemden çok daha NADİR; foods deseniyle paralel) ──
+    for (const p of powerups) p.age += dt;          // bob/halka animasyonu için
+    powerupTimer += dt;
+    if (powerupTimer >= 12000) { powerupTimer = 0; spawnPowerup(); } // ~12sn'de bir
+
     // ── Hayatta kalma doğumu: yalnızca koloni tabanın altına düşerse ──
     // Yem ARTIK otomatik harcanmaz; oyuncuda birikir (bina ekonomisi için).
     // Sadece ANT_BIRTH_INTERVAL_MS'de bir, karınca sayısı ANT_MIN_FLOOR
@@ -3105,6 +3198,7 @@ function loop(ts) {
     // tahsisini kaldırır (GC baskısını ciddi azaltır). Sıralama mantığı AYNI.
     drawables.length = 0;
     for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, t: 0, o: f });
+    for (const p of powerups) drawables.push({ wy: p.wy, uid: p.uid, t: 2, o: p });
     for (const b of buildings) {
       const bwy = worldFromGrid(b.gridX, b.gridY).y;
       drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
@@ -3115,7 +3209,7 @@ function loop(ts) {
     // objects keep a fixed relative order every frame regardless of push order or
     // engine sort stability. No tie ever resolves by chance → no flicker.
     drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
-    for (const d of drawables) { if (d.t === 0) drawFood(d.o); else d.o.draw(); }
+    for (const d of drawables) { if (d.t === 0) drawFood(d.o); else if (d.t === 2) drawPowerup(d.o); else d.o.draw(); }
 
     // Layer 8: Particles + build pulses + upgrade "Sv X!" metinleri
     drawParticles(dts);
