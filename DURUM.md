@@ -220,6 +220,15 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
 
 > **ÖNEMLİ NOT — karınca hp/ölüm:** Karıncalarda **hp/ölüm mekaniği YOK** (koddan doğrulandı — `Ant`'ta hp alanı yok, hiçbir yer `ant.active=false` yapmıyor). Akrep alan saldırısı **şimdilik SADECE binaya** vuruyor. Karınca HP+ölüm **bilinçli ertelendi** — ertelenen **karınca AI/çok-tile workstream'iyle BİRLİKTE** yapılacak; o zaman akrep saldırısına "karıncaya da vur" eklemek **tek satır** (aynı yarıçap döngüsüne `ants` taraması).
 
+### localStorage Skor Sistemi — TAMAMLANDI (kod-doğrulandı, test edildi)
+localStorage skor sistemi zaten tam implement edilmiş ve test edildi (Live Server'da F5
+sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `drawGameover` +
+`drawMenu` skor listesi çalışıyor. Anahtarlar: **`antKingdomScores`** (top-5), **`antKingdomBest`**.
+**Faz 4 kapsamından düşüldü.**
+- `endGame(score, wave)` → `prevBest`/`lastScore`/`lastWave` saklanır, `saveScore` çağrılır, `state='GAMEOVER'`.
+- `drawGameover` overlay: "Süre Doldu!" + yeni rekorsa "YENİ REKOR!" yoksa "En İyi", Puan/Dalga, "TEKRAR OYNA" butonu.
+- `drawMenu` ana menüde top-3 skor listesi gösterir.
+
 ### Yuva HP upgrade (C — TAMAMLANDI)
 - Yuva (merkez tile) tıklanınca açılan ayrı menü: `nestMenu` / `drawNestMenu` / `doNestUpgrade` / `nestUpgradeCost`. Bina upgrade sisteminden TAMAMEN ayrı.
 - **SINIRSIZ** yükseltme: her seferinde **+50** max HP (`CONFIG.QUEEN.MAX_HP += 50`) + anlık `hudQueenHP += 50`.
@@ -245,6 +254,7 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
 ## 3. SON COMMIT'LER
 
 ```
+4a619b1 Faz2B Dungbeetle P3: yuva hedefi (uclu kalip) + DURUM.md guncel
 ab90d34 Faz2B Dungbeetle P2: top firlatma + enemyShots (en yakin bina, 25 hasar)
 847ebf1 Faz2B Dungbeetle P1: buyuyen top gorseli onde, 4sn full (ballSize)
 294a2f5 Faz2B Ladybug P2: sifa pulsu sadece ana ladybug (isMini guard)
@@ -284,15 +294,16 @@ c1ed745 Faz2B Ladybug: sifa pulsu (3sn, R60, +6hp, pembe halka)
      topunun karınca hedeflemesi) HÂLÂ ertelenmiş — karınca hp/ölüm mekaniğiyle,
      karınca AI workstream'iyle birlikte gelecek.
 
-3. **Faz 4**: ana menü/HUD cila, ses genişletme, localStorage skor.
+3. **Faz 4**: (a) ana menü/HUD cila, (b) ses genişletme. **localStorage skor DÜŞÜLDÜ**
+   (zaten tam implement + test edildi, bkz. Bölüm 2 "localStorage Skor Sistemi").
 
 > **SIRADAKİ ÖNCELİK — Kerem karar verecek (iki aday):**
 > 1. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
 >    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
 >    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
 >    aynı temelin üstüne tek satırlık eklemeler olur.
-> 2. **Faz 4** — ana menü/HUD cila, ses genişletme (temel Web Audio zaten var),
->    localStorage skor.
+> 2. **Faz 4** — (a) ana menü/HUD cila, (b) ses genişletme (temel Web Audio zaten var).
+>    **localStorage skor DÜŞÜLDÜ** (zaten tam implement + test edildi).
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
