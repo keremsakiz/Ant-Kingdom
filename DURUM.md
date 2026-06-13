@@ -350,12 +350,44 @@ dc0a256 Faz4 Menu P1-fix: buton yukari + dekor karinca arka katman
    - **Kalan**: (a) **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme),
      (b) **ses genişletme** (temel Web Audio + sndPowerup var; ek efekt/karışım/cila).
 
-> **SIRADAKİ ÖNCELİK — Kerem karar verecek (iki aday):**
-> 1. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
+4. **Kerem talebi — YENİ (onaylandı, koddan doğrulandı, henüz YAPILMADI):**
+
+   **A) Boss reward kademeli + yüzen yazı.** Boss food ödülü dalgaya göre kademeli artsın
+   (dalga5=250, 10=500, 15=750) + boss ölünce üstünde "+N yem" yüzen yazı.
+   - **Doğrulanan durum:** `killEnemy` [index.html:2919]'da **isBoss dalı YOK**. Tüm düşmanlar:
+     `score += e.reward` + `food += round(e.maxHp*0.04)`. Boss `reward = cfg.reward*5` (=125 skor,
+     sabit). Boss food şu an **dolaylı** dalga-ölçekli (`maxHp*0.04`): dalga5 ≈75, dalga10 ≈204 —
+     istenenden düşük + görünmez.
+   - **"Boss level" diye alan YOK** — boss her 5. dalgada (`isBossWave = w%5===0`). "lvl" = `wave`
+     global. Formül: `Math.round(wave/5)*250`.
+   - **floatTexts sistemi VAR** ([index.html:2092] çizim, outline+yükselme hazır) → yeni sistem
+     gerekmez, tek `floatTexts.push({wx,wy,life:1,text,color})` yeter.
+   - **Ekleme noktası:** `killEnemy` içine `if (e.isBoss)` dalı (`wave` + `floatTexts` scope'ta erişilir).
+   - **KARAR (Kerem):** tiered bonus mevcut `maxHp*0.04`'ün **YERİNE mi ÜSTÜNE mi**? (yerine = tam
+     250/500/750, temiz; üstüne = biraz cömert).
+
+   **B) Şifa binası alan etkisi (bina-bina onarım).** Şifa Taşı çevresindeki **binaları** da
+   iyileştirsin (şu an sadece kraliçeyi iyileştiriyor).
+   - **Doğrulanan durum:** alarm dalı [index.html:1509-1527] sadece `hudQueenHP`'yi iyileştirir
+     (15sn, `healAmount×effectMul`, MAX clamp). İki kısıt: healer **yuvaya** `healRange`(130) içinde
+     olmalı (yuva-yakınlığı, healer-yarıçapı DEĞİL) + `alarmCanHeal` en fazla 3 healer.
+   - **Bina HP sistemi:** `this.hp`/`this.maxHP` var; `applyLevel` maxHP=base×LVL_MUL, hp=maxHP.
+     Düşmanlar azaltıyor. **Mevcut tek "onarım" = upgrade** (applyLevel hp'yi doldurur); başka rejen YOK.
+   - **Ekleme noktası:** alarm dalına, kraliçe-şifadan sonra, aynı `healTimer` tikinde `buildings`
+     üzerinde yarıçap taraması (`o!==this && o.hp<o.maxHP` → `o.hp=min(maxHP, hp+heal)`). Additive,
+     sadece `building.hp` okur/yazar → **düşük risk** (düşman/karınca/pathfinding'e dokunmaz).
+   - **KARAR (Kerem):** (1) healer-etrafı yarıçap YENİ kavram (yeni config `buildHealRange` ya da
+     `healRange` yeniden yorumu); (2) yuva kısıtından bağımsız mı; (3) bina-şifaya da 3-cap mı;
+     (4) miktar/interval kraliçeyle aynı mı ayrı mı.
+
+> **SIRADAKİ ÖNCELİK — Kerem karar verecek (adaylar):**
+> 1. **Boss reward (A)** + **Şifa alan etkisi (B)** — yukarıda madde 4, ikisi de düşük riskli,
+>    karınca HP gerektirmez, mevcut sistemlere temiz oturur. Hızlı kazanç.
+> 2. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
 >    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
 >    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
 >    aynı temelin üstüne tek satırlık eklemeler olur.
-> 2. **Faz 4** — ana menü cila + power-up sistemi + lejant **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**,
+> 3. **Faz 4 kalan** — ana menü cila + power-up + lejant **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**,
 >    (b) **ses genişletme** (temel Web Audio + sndPowerup var). localStorage skor düşüldü.
 
 ### Ertelenen / Notlar
