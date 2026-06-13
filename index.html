@@ -561,8 +561,8 @@ function drawMenu() {
   bg.addColorStop(0, '#3d2a18'); bg.addColorStop(1, '#1c130a');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-  // Dekoratif karıncalar (siluet)
-  ctx.globalAlpha = 0.13;
+  // Dekoratif karıncalar (siluet) — en alt katman, metin/panel altında kalsın
+  ctx.globalAlpha = 0.08;
   for (const a of menuAnts) drawAntShape(a.x, a.y, a.angle, a.wig, '#e8542a', 1);
   ctx.globalAlpha = 1;
 
@@ -620,7 +620,7 @@ function drawMenu() {
 
   // Başla butonu
   const bw = 220, bh = 60;
-  const bx = W / 2 - bw / 2, by = H * 0.72;
+  const bx = W / 2 - bw / 2, by = H * 0.62;
   menuStartBtn = { x: bx, y: by, w: bw, h: bh };
   ctx.fillStyle = '#7cc36b';
   rrect(bx, by, bw, bh, 14); ctx.fill();
