@@ -1181,9 +1181,16 @@ function spawnPowerup() {
   powerups.push({ wx: w.x, wy: w.y, kind, age: 0, uid: _uid++ });
 }
 
-/** P2a: SADECE iskelet — ETKİ YOK. P2b'de 'speed'→speedTimer, 'egg'→spawnAnt eklenecek. */
+/** P2b: power-up etkisini uygula. 'speed' → tüm karınca hız boost'u; 'egg' → +3 worker. */
 function collectPowerup(p) {
-  if (typeof sndFood === 'function') sndFood(); // geçici: mevcut yem sesini kullan
+  if (p.kind === 'speed') {
+    speedTimer = 6000; // ~6sn boost (ms); Ant.get speed çarpanı (SPEED_BOOST) otomatik uygular
+  } else { // 'egg'
+    for (let i = 0; i < 3; i++) { if (antCount() < CONFIG.ANT.MAX) spawnAnt('worker'); }
+  }
+  // Toplama geri bildirimi: yerinde parlama halkası + ses (yeni ses/efekt üretmeden)
+  buildPulses.push({ wx: p.wx, wy: p.wy, life: 1, c: p.kind === 'speed' ? '#ffd24a' : '#fff6e0', maxR: 60 });
+  sndDeposit();
 }
 
 // ===== BUILDINGS =====
@@ -2509,7 +2516,7 @@ function drawPowerup(p) {
   const bob = Math.sin(p.age * 0.005) * 3;          // yukarı-aşağı salınım (dünya px)
   const s   = screenFromWorld(p.wx, p.wy - bob);    // gövde (bob'lu)
   const sg  = screenFromWorld(p.wx, p.wy);          // gölge (yerde sabit)
-  const r   = 14 * cam;
+  const r   = 11 * cam;
 
   // Zemin gölgesi
   ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
@@ -3150,6 +3157,10 @@ function loop(ts) {
     for (const p of powerups) p.age += dt;          // bob/halka animasyonu için
     powerupTimer += dt;
     if (powerupTimer >= 12000) { powerupTimer = 0; spawnPowerup(); } // ~12sn'de bir
+
+    // ⚡ Hız boost geri sayımı (karınca update'inden ÖNCE — Ant.get speed okur).
+    // shieldTimer'a DOKUNMA (kalkan etkisi yok). Bittiğinde karıncalar normale döner.
+    if (speedTimer > 0) speedTimer -= dt;
 
     // ── Hayatta kalma doğumu: yalnızca koloni tabanın altına düşerse ──
     // Yem ARTIK otomatik harcanmaz; oyuncuda birikir (bina ekonomisi için).
