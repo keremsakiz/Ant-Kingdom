@@ -643,8 +643,10 @@ function drawMenu() {
   ctx.globalAlpha = 0.72;
   ctx.font = '12px -apple-system, sans-serif';
   ctx.fillStyle = '#c4a47a';
-  ctx.fillText('🍃 +1  🍎 +3  🍬 +5   |   ⚡ Hız  🛡 Kalkan  🥚 +3 Karınca', W / 2, H * 0.82);
-  ctx.fillText('Dikkat:  🕷 Örümcek  🐦 Kuş  🐞 Uğur Böceği  🪲 Bokböceği', W / 2, H * 0.82 + 20);
+  ctx.fillText('🍃 +1  🍎 +3  🍬 +5   |   ⚡ Hız  🥚 +3 Karınca', W / 2, H * 0.82);
+  // Tehditler unlockWave sırasıyla; 6 düşman 390px'e tek satıra sığmaz → 3+3 iki satır.
+  ctx.fillText('Dikkat:  🕷 Örümcek  🐞 Uğur Böceği  🪲 Bokböceği', W / 2, H * 0.82 + 20);
+  ctx.fillText('🐦 Kuş  🐜 Karınca  🦂 Boss', W / 2, H * 0.82 + 40);
   ctx.globalAlpha = 1;
 }
 
