@@ -79,7 +79,14 @@ function sndFood() {
   _lastFood = now;
   beep(660, 0.07, "square", 0.036);
 }
-const sndDeposit = () => { beep(520, 0.09, "sine", 0.1); beep(780, 0.11, "sine", 0.08); };
+let _lastDeposit = 0;
+function sndDeposit() {
+  const now = performance.now();
+  if (now - _lastDeposit < 80) return;
+  _lastDeposit = now;
+  beep(520, 0.09, "sine", 0.06);
+  beep(780, 0.11, "sine", 0.048);
+}
 const sndBorn    = () => beep(950, 0.14, "triangle", 0.11);
 const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
 const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "square", 0.12); };
