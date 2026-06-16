@@ -320,11 +320,40 @@ sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `dra
 ### Ses (NOT: temel Web Audio ZATEN VAR)
 - `initAudio`/`beep` + efektler (sndFood, sndDeposit, sndBorn, sndCatch, sndPower, sndBird) + basit melodi döngüsü mevcut. Faz 4'teki "ses" işi = cila/genişletme.
 
+### Faz 4 — Mute + Pause/Resume + drawScene refactor (TAMAMLANDI, bu oturum, test edildi)
+
+**Mute tuşu (`86a02d1`):**
+- **Menü + oyun-içi HUD** sağ üst köşede, **ikon-only toggle** (🔊/🔇). 44px, 16px margin.
+- `toggleSound()`: `soundOn`'u çevirir + `soundOn ? startMusic() : stopMusic()`. Altyapı zaten
+  hazırdı (`soundOn` flag [index.html:65], `beep` flag'e saygılı). `drawMuteButton()` ortak helper,
+  `drawMenu` ve `drawHUD` sonunda en son çizilir (üstte). `muteBtn` global hit-rect; `onMenuTap` +
+  `onPlayingTap` en başında AABB testi. **localStorage YOK** — her açılışta ses açık.
+
+**Pause/Resume (`004d075`):**
+- **Yeni `PAUSED` state.** Tuş mute'un solunda (8px boşluk), **SADECE oyun içi** (⏸/▶).
+- `togglePause()` PLAYING↔PAUSED çevirir. PAUSED dalında **dünya tamamen donar** — hiçbir
+  update/timer ilerlemez (`drawScene(0, 0)` ile son kare yeniden çizilir) + `rgba(0,0,0,0.5)`
+  karartma + "DURAKLADI" yazısı, butonlar karartmanın üstünde parlak kalır.
+- `onTap` dağıtıcısı **PAUSED'da da `onPlayingTap`'e** yönlendirir (▶ ile resume + mute çalışsın);
+  `onPlayingTap`'te mute→pause hit-test'inden sonra **`if (state==='PAUSED') return;`** guard'ı
+  → pause ekranında buton dışı tap bina kurma/power-up toplamayı tetiklemez.
+
+**REFACTOR — `drawScene(dts, dt)` (ÖNEMLİ):**
+- PLAYING'in inline çizim bloğu **`drawScene()` fonksiyonuna çıkarıldı**; hem PLAYING (gerçek
+  dts/dt) hem PAUSED (`0, 0` → donmuş) çağırır. Entity update'leri PLAYING'de update bölümüne
+  alındı; zemin katmanları entity pozisyonundan bağımsız + entity'ler post-update `drawables`'tan
+  çizildiği için **davranış/görsel BİREBİR AYNI**. Render optimizasyonları (sprite cache,
+  depth-sort `wy+uid` flicker fix, baked gölge) korundu. **Tek doğruluk kaynağı** — ileride render
+  değişikliği tek yerde. Doğrulama: braces 579/579 dengeli (node yok, tarayıcı görsel testi önerilir).
+
 ---
 
 ## 3. SON COMMIT'LER
 
 ```
+004d075 Faz4 Pause/Resume: PAUSED state, karartma + DURAKLADI, oyun ici tus
+86a02d1 Faz4 Mute tusu: menu+HUD sag ust, ikon toggle
+d57f69f docs: DURUM.md boss reward + sifa alan etkisi tamamlandi, ses/pause TODO
 71579ee Faz4 Sifa alan etkisi: onarim healer seviyesine baglandi
 37096fc Faz4 Sifa alan etkisi: cevredeki binalari onar + float yazi
 763ad4e Faz4 Boss reward: dalga-olcekli yem + float yazi
@@ -332,7 +361,6 @@ b760674 docs: DURUM.md Kerem talebi A boss reward + B sifa alan etkisi (kesif no
 8eadb10 docs: DURUM.md Faz4 menu+powerup tamamlandi
 7deedf1 Faz4 Menu P2c: lejant durust (kalkan cikti, enemyant+boss eklendi)
 b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
-8cd334a Faz4 Powerup P2b: hiz+yumurta etki, boyut rotus
 ```
 > **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Bird + Ladybug P1 dahil
 > `e9c921b`'ye kadar her şey merge + push edilmiş durumda (eski "origin'den ileride"
@@ -407,24 +435,21 @@ b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
      `healRange` yeniden yorumu); (2) yuva kısıtından bağımsız mı; (3) bina-şifaya da 3-cap mı;
      (4) miktar/interval kraliçeyle aynı mı ayrı mı.
 
-5. **Ses/Pause kontrolleri — YENİ workstream (onaylandı, henüz YAPILMADI):**
-   - **Mute (ses/müzik kapatma) tuşu** — hem **ana menüde** hem **oyun içinde**. (Temel Web Audio
-     `soundOn`/mute mantığı zaten var — Bölüm 2 "Ses"; bu işte görünür UI tuşu + her iki ekranda erişim.)
-   - **Pause / Resume tuşu** — oyun içi.
-   - **AÇIK SORU (workstream başında koddan doğrula):** oyunda **çoklu dil sistemi var mı**, yoksa
-     metinler sabit Türkçe / **ikon-only** mi? Tuş etiketleri oyunun mevcut dil yaklaşımıyla **aynı**
-     olmalı (i18n varsa ona bağlan; yoksa ikon-only ya da sabit TR — kodu kontrol et).
+5. **Ses/Pause kontrolleri — ✓ TAMAMLANDI (bu oturum):** bkz. Bölüm 2 "Faz 4 — Mute + Pause/Resume +
+   drawScene refactor". Mute (menü+HUD, 🔊/🔇) + Pause/Resume (oyun-içi, ⏸/▶, PAUSED state, donmuş
+   dünya + DURAKLADI) eklendi; çizim `drawScene()`'e refactor edildi.
+   - **Dil sorusu ÇÖZÜLDÜ:** oyunda **çoklu dil YOK** (sabit Türkçe, sadece HTML `lang="tr"`;
+     i18n/STRINGS/lang objesi yok — metinler doğrudan `fillText`'e gömülü). Tuşlar **ikon-only**
+     yapıldı → **i18n ihtiyacı yok**. İleride dil katmanı eklenirse gömülü metinler tek tek çıkar.
 
 > **SIRADAKİ ÖNCELİK — Kerem karar verecek (adaylar):**
-> 1. **Ses/Pause kontrolleri** (madde 5) — mute + pause/resume tuşları. Düşük risk, karınca HP
->    gerektirmez. Başlangıçta dil sistemi kontrolü gerekir.
-> 2. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
+> 1. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
 >    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
 >    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
 >    aynı temelin üstüne tek satırlık eklemeler olur.
-> 3. **Faz 4 kalan** — ana menü cila + power-up + lejant + boss reward + şifa alan etkisi
->    **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**, (b) **ses genişletme** (temel Web Audio + sndPowerup
->    var). localStorage skor düşüldü.
+> 2. **Faz 4 kalan** — ana menü cila + power-up + lejant + boss reward + şifa alan etkisi +
+>    mute + pause/resume **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**, (b) **ses genişletme**
+>    (temel Web Audio + sndPowerup var). localStorage skor düşüldü.
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
