@@ -124,6 +124,25 @@ function drawMuteButton() {
   ctx.fillText(soundOn ? '🔊' : '🔇', bx + s / 2, by + s / 2 + 1);
   ctx.restore();
 }
+function togglePause() {
+  if (state === 'PLAYING') state = 'PAUSED';
+  else if (state === 'PAUSED') state = 'PLAYING';
+}
+// Pause butonu — SADECE oyun içi, mute'un soluna (8px boşluk), aynı stil.
+let pauseBtn = null;
+function drawPauseButton() {
+  const s = 44;
+  const bx = W - s - 16 - s - 8, by = 16;   // mute'un solu
+  pauseBtn = { x: bx, y: by, w: s, h: s };
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  rrect(bx, by, s, s, 10); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '22px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(state === 'PAUSED' ? '▶' : '⏸', bx + s / 2, by + s / 2 + 1);
+  ctx.restore();
+}
 
 // ===== CANVAS =====
 const canvas = document.getElementById('game');
@@ -513,6 +532,7 @@ document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, 
 function handleTap(x, y) {
   if      (state === 'MENU')     onMenuTap(x, y);
   else if (state === 'PLAYING')  onPlayingTap(x, y);
+  else if (state === 'PAUSED')   onPlayingTap(x, y); // pause ekranında mute+pause(▶) tuşları çalışsın
   else if (state === 'GAMEOVER') onGameoverTap(x, y);
 }
 
@@ -1015,6 +1035,7 @@ function drawHUD() {
   ctx.restore();
 
   drawMuteButton(); // en üstte görünsün diye en son
+  drawPauseButton(); // mute'un soluna (sadece oyun içi HUD'da)
 }
 
 // ===== ANT SHAPE (shared utility for menu dekor + future Ant class) =====
@@ -1045,6 +1066,14 @@ function onPlayingTap(x, y) {
     toggleSound();
     return;
   }
+  // Pause/Resume butonu — mute'un hemen ardından, yine en başta.
+  if (pauseBtn && x >= pauseBtn.x && x <= pauseBtn.x + pauseBtn.w &&
+      y >= pauseBtn.y && y <= pauseBtn.y + pauseBtn.h) {
+    togglePause();
+    return;
+  }
+  // PAUSED iken buton DIŞI tap oyunu etkilemesin (bina kurma/power-up toplama yok).
+  if (state === 'PAUSED') return;
   // Power-up tap-collect — açık menü YOKKEN, tile karar ağacından ÖNCE (en güvenli nokta).
   // Power-up'a denk gelen tap erken return → bina kurma/yükseltme tetiklenmez.
   if (!radialMenu && !upgradeMenu && !nestMenu) {
@@ -3173,6 +3202,67 @@ document.addEventListener('keydown', e => {
 // ===== MAIN LOOP =====
 let lastTs = 0;
 
+/**
+ * Dünyayı çiz (SADECE çizim — hiçbir oyun state'i ilerletmez). PLAYING dalı bunu
+ * update'lerden SONRA gerçek dts/dt ile çağırır; PAUSED dalı (0, 0) ile çağırır
+ * → tüm animasyon/timer donar, son kare yeniden çizilir. Çizim sırası eski inline
+ * PLAYING bloğuyla AYNI (zemin → entity depth-sort → particle → HUD → menü).
+ */
+function drawScene(dts, dt) {
+  // Background gradient (önbellekten — her frame yeniden yaratılmıyor)
+  ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
+
+  // Layer 1: Zemin tile'ları
+  drawGrid();
+
+  // Layer 2: Feromon overlay
+  drawPheromone();
+
+  // Layer 2.5: Spider ağ izleri (zemin/feromon üstü, binaların/birimlerin altı)
+  drawSpiderWebs();
+
+  // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
+  // ONE consistent depth anchor for every object: its world-Y center (wy). Tip etiketi
+  // (t) + nesne referansı (o) sakla → çizimde dispatch et (frame başına closure yok).
+  drawables.length = 0;
+  for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, t: 0, o: f });
+  for (const p of powerups) drawables.push({ wy: p.wy, uid: p.uid, t: 2, o: p });
+  for (const b of buildings) {
+    const bwy = worldFromGrid(b.gridX, b.gridY).y;
+    drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
+  }
+  for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, t: 1, o: a });
+  for (const e of enemies) if (e.active) drawables.push({ wy: e.wy, uid: e.uid, t: 1, o: e });
+  // STABLE order: wy eşitliğini kalıcı uid ile boz → her frame sabit sıra (flicker yok).
+  drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
+  for (const d of drawables) { if (d.t === 0) drawFood(d.o); else if (d.t === 2) drawPowerup(d.o); else d.o.draw(); }
+
+  // Layer 8: Particles + build pulses + upgrade "Sv X!" metinleri
+  drawParticles(dts);
+  drawBuildPulses(dts);
+  drawBullets();
+  drawEnemyShots();
+  drawFloatTexts(dts);
+
+  // Layer 8.5: Kraliçe hasar flash + hazırlık fazı uyarı/geri sayım
+  drawWaveOverlay(dt);
+
+  // Layer 9: HUD
+  hudFood = food; hudPop = antCount();
+  drawHUD();
+
+  // Layer 10: Menüler (her şeyin üstünde) — radyal (boş tile) / upgrade (dolu tile)
+  drawRadialMenu();
+  drawUpgradeMenu();
+  drawNestMenu();
+
+  // Yardım metni
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText("Boş tile → kur · Binaya dokun → yükselt · Basılı tut → yık (%75 iade) · Sürükle/Zoom · ESC · R", W / 2, H - 88);
+}
+
 function loop(ts) {
   const dt = Math.min(ts - lastTs, 50); // cap at 50 ms
   lastTs = ts;
@@ -3181,9 +3271,6 @@ function loop(ts) {
     updateMenu(dt);
     drawMenu();
   } else if (state === 'PLAYING') {
-    // Background gradient (önbellekten — her frame yeniden yaratılmıyor)
-    ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
-
     const dts = dt / 16.667; // delta-time scale (1.0 == 60fps)
 
     // Emoji sprite ön-ısıtma debounce: zoom bitince (ölçek 10 frame sabit) bir kez
@@ -3244,16 +3331,7 @@ function loop(ts) {
     // ── Dalga sistemi (PREP/WAVE faz akışı + periyodik düşman spawn) ──
     updateWave(dt);
 
-    // Layer 1: Zemin tile'ları
-    drawGrid();
-
-    // Layer 2: Feromon overlay
-    drawPheromone();
-
-    // Layer 2.5: Spider ağ izleri (zemin/feromon üstü, binaların/birimlerin altı)
-    drawSpiderWebs();
-
-    // Update ants + enemies (logic) before depth-sorted draw
+    // Update ants + enemies (logic) before depth-sorted draw (çizim drawScene'de).
     _enemyLoad.clear(); // her frame sıfırla — soldier hedef-yük dağılımı (bkz. updateGuard)
     for (const a of ants) if (a.active) a.update(dts);
     for (const e of enemies) if (e.active) e.update(dts);
@@ -3264,54 +3342,25 @@ function loop(ts) {
     updateBullets(dts);
     updateEnemyShots(dts);
 
-    // Layers 5-7: depth-sorted food + buildings + ants (painter's algorithm by world Y)
-    // ONE consistent depth anchor for every object: its world-Y center (wy). Food
-    // and ants already live at their wy; a building's anchor is its tile center
-    // worldFromGrid(...).y — the SAME formula, no special-casing. Mixing anchors
-    // (e.g. an extra half-tile bias on buildings only) makes objects collide with
-    // a neighbouring diagonal's depths and flip order frame-to-frame → flicker.
-    // Her frame yeni closure (() => ...) yaratmak yerine, tip etiketi (t) + nesne
-    // referansı (o) sakla → çizimde dispatch et. Bu, frame başına 3×N kapama
-    // tahsisini kaldırır (GC baskısını ciddi azaltır). Sıralama mantığı AYNI.
-    drawables.length = 0;
-    for (const f of foods) drawables.push({ wy: f.wy, uid: f.uid, t: 0, o: f });
-    for (const p of powerups) drawables.push({ wy: p.wy, uid: p.uid, t: 2, o: p });
-    for (const b of buildings) {
-      const bwy = worldFromGrid(b.gridX, b.gridY).y;
-      drawables.push({ wy: bwy, uid: b.uid, t: 1, o: b });
-    }
-    for (const a of ants) if (a.active) drawables.push({ wy: a.wy, uid: a.uid, t: 1, o: a });
-    for (const e of enemies) if (e.active) drawables.push({ wy: e.wy, uid: e.uid, t: 1, o: e });
-    // STABLE order: break wy ties by the object's permanent uid, so equal-depth
-    // objects keep a fixed relative order every frame regardless of push order or
-    // engine sort stability. No tie ever resolves by chance → no flicker.
-    drawables.sort((p, q) => (p.wy - q.wy) || (p.uid - q.uid));
-    for (const d of drawables) { if (d.t === 0) drawFood(d.o); else if (d.t === 2) drawPowerup(d.o); else d.o.draw(); }
-
-    // Layer 8: Particles + build pulses + upgrade "Sv X!" metinleri
-    drawParticles(dts);
-    drawBuildPulses(dts);
-    drawBullets();
-    drawEnemyShots();
-    drawFloatTexts(dts);
-
-    // Layer 8.5: Kraliçe hasar flash + hazırlık fazı uyarı/geri sayım
-    drawWaveOverlay(dt);
-
-    // Layer 9: HUD
-    hudFood = food; hudPop = antCount();
-    drawHUD();
-
-    // Layer 10: Menüler (her şeyin üstünde) — radyal (boş tile) / upgrade (dolu tile)
-    drawRadialMenu();
-    drawUpgradeMenu();
-    drawNestMenu();
-
-    // Yardım metni
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.font = '11px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText("Boş tile → kur · Binaya dokun → yükselt · Basılı tut → yık (%75 iade) · Sürükle/Zoom · ESC · R", W / 2, H - 88);
+    // Tüm update'ler bitti → dünyayı çiz. Zemin/feromon/web entity pozisyonundan
+    // bağımsız + entity'ler post-update drawables'tan çizilir → eski inline sırayla
+    // GÖRSEL OLARAK ÖZDEŞ. drawScene PAUSED dalında (0,0) ile yeniden kullanılır.
+    drawScene(dts, dt);
+  } else if (state === 'PAUSED') {
+    drawScene(0, 0);            // son dünya karesi, donmuş (hiçbir update YOK)
+    // Karartma + "DURAKLADI" — butonlardan ÖNCE çizilir; butonlar sonra parlak kalır
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('DURAKLADI', W / 2, H / 2);
+    ctx.restore();
+    drawMuteButton();
+    drawPauseButton();
+    requestAnimationFrame(loop);
+    return;
   } else if (state === 'GAMEOVER') {
     // Draw grid as static backdrop (gradient önbellekten)
     ctx.fillStyle = getBgGradient(); ctx.fillRect(0, 0, W, H);
