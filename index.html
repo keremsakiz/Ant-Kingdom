@@ -105,6 +105,25 @@ function startMusic() {
   }, 420);
 }
 function stopMusic() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
+function toggleSound() {
+  soundOn = !soundOn;
+  if (soundOn) { startMusic(); } else { stopMusic(); }
+}
+// Mute butonu — menü + HUD ortak, sağ üst köşe, ikon-only (🔊/🔇). soundOn'a saygılı.
+let muteBtn = null;
+function drawMuteButton() {
+  const s = 44;                       // buton boyutu
+  const bx = W - s - 16, by = 16;     // sağ üst köşe, 16px margin
+  muteBtn = { x: bx, y: by, w: s, h: s };
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  rrect(bx, by, s, s, 10); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = '22px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(soundOn ? '🔊' : '🔇', bx + s / 2, by + s / 2 + 1);
+  ctx.restore();
+}
 
 // ===== CANVAS =====
 const canvas = document.getElementById('game');
@@ -648,9 +667,16 @@ function drawMenu() {
   ctx.fillText('Dikkat:  🕷 Örümcek  🐞 Uğur Böceği  🪲 Bokböceği', W / 2, H * 0.82 + 20);
   ctx.fillText('🐦 Kuş  🐜 Karınca  🦂 Boss', W / 2, H * 0.82 + 40);
   ctx.globalAlpha = 1;
+
+  drawMuteButton(); // en üstte görünsün diye en son
 }
 
 function onMenuTap(x, y) {
+  if (muteBtn && x >= muteBtn.x && x <= muteBtn.x + muteBtn.w &&
+      y >= muteBtn.y && y <= muteBtn.y + muteBtn.h) {
+    toggleSound();
+    return;
+  }
   const b = menuStartBtn;
   if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) startGame();
 }
@@ -987,6 +1013,8 @@ function drawHUD() {
     bx += btnW + btnGap;
   }
   ctx.restore();
+
+  drawMuteButton(); // en üstte görünsün diye en son
 }
 
 // ===== ANT SHAPE (shared utility for menu dekor + future Ant class) =====
@@ -1011,6 +1039,12 @@ function drawAntShape(x, y, angle, wig, bodyColor, scale) {
 
 // ===== PLAYING TILE TAP =====
 function onPlayingTap(x, y) {
+  // Mute butonu — diğer her şeyden ÖNCE (üst katman gibi davransın).
+  if (muteBtn && x >= muteBtn.x && x <= muteBtn.x + muteBtn.w &&
+      y >= muteBtn.y && y <= muteBtn.y + muteBtn.h) {
+    toggleSound();
+    return;
+  }
   // Power-up tap-collect — açık menü YOKKEN, tile karar ağacından ÖNCE (en güvenli nokta).
   // Power-up'a denk gelen tap erken return → bina kurma/yükseltme tetiklenmez.
   if (!radialMenu && !upgradeMenu && !nestMenu) {
