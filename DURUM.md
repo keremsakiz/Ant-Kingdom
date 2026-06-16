@@ -346,26 +346,68 @@ sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `dra
   depth-sort `wy+uid` flicker fix, baked gölge) korundu. **Tek doğruluk kaynağı** — ileride render
   değişikliği tek yerde. Doğrulama: braces 579/579 dengeli (node yok, tarayıcı görsel testi önerilir).
 
+### Faz 4 — Ses Genişletme + Game Over Polish (TAMAMLANDI, bu oturum — MERGE BEKLİYOR)
+
+> **Bu oturumun commitleri main'e MERGE EDİLMEDİ.** Branch'te (`claude/gifted-planck-JSihd`)
+> commitli, ayrı bir adımda topluca merge + push edilecek.
+
+**Ses P1 — yeni SFX (`1fc0471`):** mevcut `beep()` + `snd*` kalıbına 3 helper (master bus YOK,
+`actx.destination` kalır):
+- `sndShoot()` — kule ateşi (ranger + catapult `bullets.push` ardına). **880Hz triangle**, 0.04s,
+  vol 0.09 (ayar sonrası; ilk değer 440Hz square 0.05'ti). Kısa kuru orta-tiz tık.
+- `sndWave()` — `startWave` sonunda. 2-nota alçaktan yükselen uyarı (330→440 sawtooth, 120ms ofset).
+- `sndBossSpawn()` — boss spawn (`updateWave`, `spawnEnemy('dungbeetle',...,true)` yanı). Derin
+  tehditkâr 2-ton (160 sawtooth → 120 square, 200ms ofset).
+
+**Ses ayarları — yem gürültüsü çözüldü (`61568e2` → `cc31760`):**
+- `sndShoot` duyulurluk: 440→**880Hz**, square→**triangle**, vol 0.05→**0.09** (vuruş/müzikten ayrışır).
+- `sndFood` + `sndDeposit` ok-fonksiyondan normal `function`'a çevrildi; **vol %60'a indirildi**
+  (sndFood 0.06→0.036; sndDeposit 0.1→0.06 ve 0.08→0.048), freq/dur/type AYNI (karakter korundu).
+- **Throttle pattern**: her birine ayrı guard (`_lastFood` / `_lastDeposit`) + `performance.now()`;
+  pencere kademeli açıldı 80→400→**600ms**. Toplu yem toplamada/bırakmada artık tek "ara sıra tık".
+
+**Ses P2 — yuva hasar + game over (`2d30d08`):** 2 helper daha:
+- `sndQueenHurt()` — `_lastHurt` guard + **500ms throttle** (akında tek alarm), alçalan 2-nota
+  tehlike (220→165 square, 90ms ofset). Üç queen-hasar noktasının HER BİRİNE `hudQueenHP -=`
+  ardına eklendi (dungbeetle topu / boss yuvada / normal düşman) — üçü aynı `_lastHurt`'ü paylaşır.
+- `sndGameOver()` — düşen 3-nota kapanış (330→247→165 sawtooth, 200/420ms ofset). `endGame`'de
+  `state='GAMEOVER'`'dan ÖNCE. ESC test-cheat'i de `endGame` üzerinden bunu çalar.
+
+**Game over fix (`c6a6a6f`):** başlık **"⏱ Süre Doldu!" → "🐜 Yuva Düştü!"**. Doğrulandı: oyunun
+**süre/zaman limiti diye bir bitişi YOK** — sadece kraliçe HP ≤ 0 ile biter (3 hasar noktası →
+`endGame`). "Süre Doldu" tamamen yanlıştı.
+
+**Game over polish (`df02f88`):** `drawGameover`'da Dalga satırı altına (H*0.63, 15px, soluk
+#b89a7a) `lastWave`'e göre **dinamik teşvik mesajı**: ≤2 "Daha yeni başladın, pes etme!", ≤5 "İyi
+dayandın...", ≤9 "Güçlü bir savunmaydı!", 10+ "Efsanevi bir koloni! Rekoru zorla!".
+- **Doğrulandı (keşif):** `lastWave` ← `endGame`'in `wave` param'ı ← çağrı anındaki global `wave`
+  (= `hudWave` = HUD'da gösterilen). "Dalga:" satırı ve mesaj **AYNI `lastWave`'i** okur → çelişemezler.
+  Veri akışı doğru; "wave 8'de wave-1 mesajı" gözlemi koddan üretilemiyor → muhtemelen tarayıcı cache
+  (sert yenileme önerildi).
+
 ---
 
 ## 3. SON COMMIT'LER
 
 ```
+df02f88 Faz4: gameover dinamik tesvik mesaji (dalgaya gore)
+c6a6a6f Fix: gameover basligi 'Sure Doldu' -> 'Yuva Dustu' (queen olumu)
+2d30d08 Faz4 ses P2: queen hasar (throttle) + game over sesi
+cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
+8b0ee3b Faz4 ses P1 ayar: yem throttle 80->400ms (ara sira tik)
+779768d Faz4 ses P1 ayar: sndDeposit kis+throttle
+61568e2 Faz4 ses P1 ayar: sndShoot duyulurluk + sndFood kis+throttle
+1fc0471 Faz4 ses P1: kule atesi + dalga + boss spawn sesleri
+9d2db6d docs: DURUM.md mute + pause/resume tamamlandi (drawScene refactor)
 004d075 Faz4 Pause/Resume: PAUSED state, karartma + DURAKLADI, oyun ici tus
-86a02d1 Faz4 Mute tusu: menu+HUD sag ust, ikon toggle
-d57f69f docs: DURUM.md boss reward + sifa alan etkisi tamamlandi, ses/pause TODO
-71579ee Faz4 Sifa alan etkisi: onarim healer seviyesine baglandi
-37096fc Faz4 Sifa alan etkisi: cevredeki binalari onar + float yazi
-763ad4e Faz4 Boss reward: dalga-olcekli yem + float yazi
-b760674 docs: DURUM.md Kerem talebi A boss reward + B sifa alan etkisi (kesif notlari)
 8eadb10 docs: DURUM.md Faz4 menu+powerup tamamlandi
 7deedf1 Faz4 Menu P2c: lejant durust (kalkan cikti, enemyant+boss eklendi)
 b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
 ```
-> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Bird + Ladybug P1 dahil
-> `e9c921b`'ye kadar her şey merge + push edilmiş durumda (eski "origin'den ileride"
-> uyarısı eskidi, silindi). Bu oturumun commitleri (`294a2f5` ve sonrası: Ladybug P2 +
-> Dungbeetle topu) branch'te — push/merge durumu için `git status -sb` ile doğrula.
+> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **Bu oturumun commitleri
+> (`1fc0471` → `df02f88`: Faz 4 ses genişletme + game over polish) main'e MERGE EDİLMEDİ
+> — branch'te commitli, ayrı bir adımda topluca merge + push edilecek.** Öncesi (mute +
+> pause/resume `9d2db6d`'ye kadar) merge + push durumu için `git status -sb` ile doğrula.
 
 ---
 
@@ -397,9 +439,11 @@ b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
      dikey denge + dekor karınca arka katman) ve lejant dürüstlük güncellemesi.
    - ~~**Power-up sistemi**~~ — **✓ TAMAMLANDI** (YENİ, bkz. Bölüm 2 "Faz 4 — Power-up Sistemi":
      ⚡ hız + 🥚 yumurta, tap-to-collect, programatik çizim, sndPowerup arpeji).
+   - ~~**Ses genişletme**~~ — **✓ TAMAMLANDI** (bu oturum, MERGE BEKLİYOR; bkz. Bölüm 2 "Faz 4 —
+     Ses Genişletme + Game Over Polish": ses P1 sndShoot/sndWave/sndBossSpawn + yem sesi kıs/throttle
+     + ses P2 sndQueenHurt/sndGameOver + game over başlık fix + dinamik teşvik mesajı).
    - **localStorage skor** — DÜŞÜLDÜ (zaten tam implement + test edildi).
-   - **Kalan**: (a) **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme),
-     (b) **ses genişletme** (temel Web Audio + sndPowerup var; ek efekt/karışım/cila).
+   - **Kalan (TEK)**: **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme).
 
 4. **Kerem talebi — ✓ TAMAMLANDI (A + B, bu oturum):** bkz. Bölüm 2 "Faz 4 — Boss Reward +
    Şifa Alan Etkisi". A: dalga-ölçekli boss yem ödülü + "+N 🍖" float (yerine geçer).
@@ -442,16 +486,26 @@ b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
      i18n/STRINGS/lang objesi yok — metinler doğrudan `fillText`'e gömülü). Tuşlar **ikon-only**
      yapıldı → **i18n ihtiyacı yok**. İleride dil katmanı eklenirse gömülü metinler tek tek çıkar.
 
-> **SIRADAKİ ÖNCELİK — Kerem karar verecek (adaylar):**
-> 1. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
->    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
->    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
->    aynı temelin üstüne tek satırlık eklemeler olur.
-> 2. **Faz 4 kalan** — ana menü cila + power-up + lejant + boss reward + şifa alan etkisi +
->    mute + pause/resume **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**, (b) **ses genişletme**
->    (temel Web Audio + sndPowerup var). localStorage skor düşüldü.
+> **SIRADAKİ ÖNCELİK — Faz 4 KALAN: HUD CİLA.**
+> Faz 4'ün tek kalan parçası: **HUD cila** — oyun-içi üst panel + balon (radyal/upgrade/yuva
+> menüleri) + buton görsel iyileştirme. **Bu bitince Faz 4 TAM KAPANIR ve merge edilir**
+> (bu oturumun ses + gameover commitleri zaten merge bekliyor → HUD cila ile birlikte topluca).
+>
+> **Sonraki büyük aday (Faz 4 sonrası):** **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm
+> mekaniği gerektirir (şu an karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca
+> HP temeli kurulmalı; akrep "karıncaya vur", dungbeetle topunun karınca hedeflemesi ve 🛡 Kalkan
+> power-up'ı da aynı temelin üstüne eklemeler olur.
 
 ### Ertelenen / Notlar
+- **SFX master bus YOK — bilinçli.** Tüm SFX `beep()` ile doğrudan `actx.destination`'a bağlanır
+  (müzik ayrı `musicGain` bus'ında). Master gain / filtre / ducking **eklenmedi** — **tutorial/intro
+  (Kraliçe anlatım) workstream'ine ertelendi** (anlatım sırasında SFX'i kısmak için ducking orada gerekecek).
+- **Zafer / WIN durumu YOK.** Oyun **sonsuz dalga**; sadece kraliçe HP ≤ 0 olunca biter. State seti:
+  **`MENU` | `PLAYING` | `PAUSED` | `GAMEOVER`** (WIN/VICTORY yok). Game over başlığı bu yüzden
+  "🐜 Yuva Düştü!" (süre değil). İleride zafer koşulu istenirse yeni state + dalga tavanı gerekir.
+- **Yem sesi throttle pattern (referans):** `_lastFood` / `_lastDeposit` modül-seviyesi guard +
+  `performance.now()`; `if (now - _last < 600) return; _last = now;` → toplu olayda tek tık.
+  `sndQueenHurt` aynı deseni 500ms ile kullanır (`_lastHurt`). Yeni sık-çalan SFX eklerken bu deseni taklit et.
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
   seviyeden bağımsız HEP 1 tile kaplıyor; bu yüzden büyüyen sv4-6 sprite'ı komşu tile'lara
   taşıyor ve oyuncu bitişiğe hâlâ bina kurabiliyor. İstenen: ayak izi seviyeyle büyüsün,
