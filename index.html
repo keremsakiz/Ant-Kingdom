@@ -75,14 +75,14 @@ function beep(freq, dur, type = "sine", vol = 0.15) {
 let _lastFood = 0;
 function sndFood() {
   const now = performance.now();
-  if (now - _lastFood < 80) return;   // 80ms içinde 2. kez çalma → toplu toplamada tek tık
+  if (now - _lastFood < 400) return;   // 80ms içinde 2. kez çalma → toplu toplamada tek tık
   _lastFood = now;
   beep(660, 0.07, "square", 0.036);
 }
 let _lastDeposit = 0;
 function sndDeposit() {
   const now = performance.now();
-  if (now - _lastDeposit < 80) return;
+  if (now - _lastDeposit < 400) return;
   _lastDeposit = now;
   beep(520, 0.09, "sine", 0.06);
   beep(780, 0.11, "sine", 0.048);
