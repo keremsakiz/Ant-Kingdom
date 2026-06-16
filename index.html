@@ -38,7 +38,7 @@ const CONFIG = {
     barricade: { cost: 90, hp: 120, emoji: '🪨', name: 'Barikat' },
     barracks:  { cost: 150, hp:  80, emoji: '⚔️', name: 'Kışla',       spawnInterval: 15000 },
     tower:     { cost: 320, hp:  60, emoji: '🍄', name: 'Zehir Kulesi', range: 150, cooldown: 2000, poisonDmg: 28, maxCount: 4 },
-    alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, healInterval: 15000, healAmount: 3 },
+    alarm:     { cost: 75, hp:  40, emoji: '💚', name: 'Şifa Taşı',    healRange: 130, repairRange: 120, healInterval: 15000, healAmount: 3 },
     // ranger.range/cooldown/dmg — TEK HEDEF mermi: menzil(world px)/atış periyodu(ms)/mermi hasarı.
     // effectMul ile range/dmg artar, cooldown azalır (cooldown/eff → daha sık).
     ranger:    { cost: 220, hp:  70, emoji: '🏹', name: 'Atış Kulesi', range: 185, cooldown: 900, dmg: 14, maxCount: 4 },
@@ -1523,6 +1523,21 @@ class Building {
           hudQueenHP = Math.min(CONFIG.QUEEN.MAX_HP, hudQueenHP + heal);
           buildPulses.push({ wx: nestW.x, wy: nestW.y, life: 1.0, c: '#5aff8a', maxR: 50 }); // yuvada şifa halkası
           burst(w.x, w.y, '#5aff8a', 6); // bina konumunda yeşil parçacık
+        }
+        // YENI: cevredeki binalari onar (yuva kisitindan bagimsiz)
+        if (alarmCanHeal(this)) {
+          const rr2 = cfg.repairRange * cfg.repairRange;
+          for (const o of buildings) {
+            if (o === this || o.hp >= o.maxHP) continue;
+            const ow = worldFromGrid(o.gridX, o.gridY);
+            const d2 = (ow.x - w.x) ** 2 + (ow.y - w.y) ** 2;
+            if (d2 <= rr2) {
+              const rep = Math.round(o.maxHP * 0.15);
+              o.hp = Math.min(o.maxHP, o.hp + rep);
+              burst(ow.x, ow.y, '#5aff8a', 5);
+              floatTexts.push({ wx: ow.x, wy: ow.y, life: 1.0, text: '+' + rep + ' 🔧', color: '#5aff8a' });
+            }
+          }
         }
       }
     } else if (this.type === 'ranger') {
