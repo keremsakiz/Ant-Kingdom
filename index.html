@@ -1532,7 +1532,7 @@ class Building {
             const ow = worldFromGrid(o.gridX, o.gridY);
             const d2 = (ow.x - w.x) ** 2 + (ow.y - w.y) ** 2;
             if (d2 <= rr2) {
-              const rep = Math.round(o.maxHP * 0.15);
+              const rep = Math.round(o.maxHP * 0.15 * eff);
               o.hp = Math.min(o.maxHP, o.hp + rep);
               burst(ow.x, ow.y, '#5aff8a', 5);
               floatTexts.push({ wx: ow.x, wy: ow.y, life: 1.0, text: '+' + rep + ' 🔧', color: '#5aff8a' });
