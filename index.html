@@ -2919,7 +2919,13 @@ function enemyCount() { let n = 0; for (const e of enemies) if (e.active) n++; r
 function killEnemy(e) {
   e.active = false;
   score += e.reward;
-  food += Math.round(e.maxHp * 0.04); // dusman gucuyle orantili food odulu
+  if (e.isBoss) {
+    const bossReward = 800 + Math.floor(wave / 5) * 400;
+    food += bossReward;
+    floatTexts.push({ wx: e.wx, wy: e.wy, life: 1.0, text: '+' + bossReward + ' 🍖', color: '#ffd24a' });
+  } else {
+    food += Math.round(e.maxHp * 0.04); // dusman gucuyle orantili food odulu
+  }
   burst(e.wx, e.wy, '#ff6a3a', 10);
   sndCatch();
   // Spider ölünce öldüğü yerde 2 mini spider doğar (mini tekrar doğurmaz → zincir yok).
