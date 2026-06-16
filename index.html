@@ -760,6 +760,15 @@ function drawGameover() {
   ctx.font = '17px -apple-system, sans-serif';
   ctx.fillText('Dalga: ' + lastWave, W / 2, H * 0.58);
 
+  let mesaj;
+  if (lastWave <= 2)      mesaj = 'Daha yeni başladın, pes etme!';
+  else if (lastWave <= 5) mesaj = 'İyi dayandın, daha iyisini yapabilirsin!';
+  else if (lastWave <= 9) mesaj = 'Güçlü bir savunmaydı!';
+  else                    mesaj = 'Efsanevi bir koloni! Rekoru zorla!';
+  ctx.fillStyle = '#b89a7a';
+  ctx.font = '15px -apple-system, sans-serif';
+  ctx.fillText(mesaj, W / 2, H * 0.63);
+
   const bw = 230, bh = 60;
   const bx = W / 2 - bw / 2, by = H * 0.68;
   gameoverBtn = { x: bx, y: by, w: bw, h: bh };
