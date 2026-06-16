@@ -263,6 +263,29 @@ dalış sayısı anlam kazanamadan düşürüyor. `94f6daa` ile dalış kodu kom
   eklendi**. 6 düşman 390px'e tek satıra sığmadığı için tehditler **3+3 iki satıra** bölündü
   (H*0.82+20 ve +40); font/renk (12px) aynı.
 
+### Faz 4 — Boss Reward + Şifa Alan Etkisi (TAMAMLANDI, bu oturum, test edildi)
+
+**A) Boss reward — dalga-ölçekli yem + yüzen yazı (`763ad4e`):**
+- `killEnemy` içine `if (e.isBoss)` dalı eklendi. Boss food ödülü artık
+  **`bossReward = 800 + Math.floor(wave/5)*400`** (dalga5=1200, 10=1600, 15=2000).
+- Boss ölünce konumunda **"+N 🍖"** altın (`#ffd24a`) `floatTexts` yazısı.
+- Tiered ödül eski **`maxHp*0.04`'ün YERİNE** geçer (üstüne değil). **Normal düşman ödülü
+  HİÇ değişmedi** (`else` dalında `maxHp*0.04` aynen). `floatTexts`/`wave` zaten scope'ta.
+
+**B) Şifa Taşı (alarm) alan etkisi — çevredeki binaları onarır (`37096fc` + `71579ee`):**
+- Kraliçe şifa mantığına DOKUNULMADI; aynı `healTimer` tikinde (15sn) **AYRI bina-onarım
+  döngüsü** eklendi. Kraliçe if bloğu aynen korundu, altına yeni blok.
+- **`repairRange: 120`** yeni config alanı (`CONFIG.BUILDINGS.alarm`, `healRange` 130 değişmedi).
+- Healer çevresinde `repairRange` kare-mesafe içindeki, canı eksik (`o.hp < o.maxHP`) binalara
+  onarım: **`rep = round(o.maxHP * 0.15 * eff)`** → **healer seviyesine bağlı** (eff = LVL_MUL,
+  sv1→sv6 artar). `o.hp = min(o.maxHP, o.hp + rep)`.
+- **Yuva kısıtından bağımsız** (kraliçe şifasındaki `inRange` yuva-yakınlığı buna uygulanmaz),
+  ama **3-healer cap'i paylaşır** (`alarmCanHeal(this)` kapısı). Her onarımda yeşil `burst` +
+  **"+N 🔧"** yeşil (`#5aff8a`) `floatTexts`.
+- **KRİTİK:** binalarda alan adı **`maxHP` (büyük H)** — düşmanlardaki `maxHp` DEĞİL.
+- Kerem'in Bölüm 4'teki A/B karar soruları bu implementasyonla kapandı (A: yerine; B: yeni
+  repairRange + yuvadan bağımsız + 3-cap paylaşımı + eff-ölçekli).
+
 > **NOT — 🛡 Kalkan bilinçle ATLANDI:** `shieldTimer` sadece görsel halka çiziyor; karıncalarda
 > HP/ölüm olmadığı için koruyacak bir şey yok. **`shieldTimer` için decrement loop EKLENMEDİ**
 > (sadece `speedTimer`'a eklendi). Kalkan, ertelenen **karınca HP/ölüm workstream'i** gelince
@@ -302,14 +325,14 @@ sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `dra
 ## 3. SON COMMIT'LER
 
 ```
+71579ee Faz4 Sifa alan etkisi: onarim healer seviyesine baglandi
+37096fc Faz4 Sifa alan etkisi: cevredeki binalari onar + float yazi
+763ad4e Faz4 Boss reward: dalga-olcekli yem + float yazi
+b760674 docs: DURUM.md Kerem talebi A boss reward + B sifa alan etkisi (kesif notlari)
+8eadb10 docs: DURUM.md Faz4 menu+powerup tamamlandi
 7deedf1 Faz4 Menu P2c: lejant durust (kalkan cikti, enemyant+boss eklendi)
 b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
 8cd334a Faz4 Powerup P2b: hiz+yumurta etki, boyut rotus
-a710be4 Faz4 Powerup P2a: powerups dizisi + cizim + tap-collect (etki yok)
-dc0a256 Faz4 Menu P1-fix: buton yukari + dekor karinca arka katman
-4593b2c Faz4 Menu P1: skor karti + dikey denge
-82fed05 docs: DURUM.md localStorage skor TAMAMLANDI, Faz4 kapsam guncel
-4a619b1 Faz2B Dungbeetle P3: yuva hedefi (uclu kalip) + DURUM.md guncel
 ```
 > **Branch durumu:** Branch `claude/gifted-planck-JSihd`. Bird + Ladybug P1 dahil
 > `e9c921b`'ye kadar her şey merge + push edilmiş durumda (eski "origin'den ileride"
@@ -350,7 +373,11 @@ dc0a256 Faz4 Menu P1-fix: buton yukari + dekor karinca arka katman
    - **Kalan**: (a) **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme),
      (b) **ses genişletme** (temel Web Audio + sndPowerup var; ek efekt/karışım/cila).
 
-4. **Kerem talebi — YENİ (onaylandı, koddan doğrulandı, henüz YAPILMADI):**
+4. **Kerem talebi — ✓ TAMAMLANDI (A + B, bu oturum):** bkz. Bölüm 2 "Faz 4 — Boss Reward +
+   Şifa Alan Etkisi". A: dalga-ölçekli boss yem ödülü + "+N 🍖" float (yerine geçer).
+   B: Şifa Taşı çevredeki binaları onarır (`repairRange=120`, yuvadan bağımsız, 3-cap paylaşımı,
+   `maxHP*0.15*eff` healer-seviyesine bağlı, "+N 🔧" float). A/B karar soruları kapandı.
+   Eski keşif notları aşağıda referans olarak korundu:
 
    **A) Boss reward kademeli + yüzen yazı.** Boss food ödülü dalgaya göre kademeli artsın
    (dalga5=250, 10=500, 15=750) + boss ölünce üstünde "+N yem" yüzen yazı.
@@ -380,15 +407,24 @@ dc0a256 Faz4 Menu P1-fix: buton yukari + dekor karinca arka katman
      `healRange` yeniden yorumu); (2) yuva kısıtından bağımsız mı; (3) bina-şifaya da 3-cap mı;
      (4) miktar/interval kraliçeyle aynı mı ayrı mı.
 
+5. **Ses/Pause kontrolleri — YENİ workstream (onaylandı, henüz YAPILMADI):**
+   - **Mute (ses/müzik kapatma) tuşu** — hem **ana menüde** hem **oyun içinde**. (Temel Web Audio
+     `soundOn`/mute mantığı zaten var — Bölüm 2 "Ses"; bu işte görünür UI tuşu + her iki ekranda erişim.)
+   - **Pause / Resume tuşu** — oyun içi.
+   - **AÇIK SORU (workstream başında koddan doğrula):** oyunda **çoklu dil sistemi var mı**, yoksa
+     metinler sabit Türkçe / **ikon-only** mi? Tuş etiketleri oyunun mevcut dil yaklaşımıyla **aynı**
+     olmalı (i18n varsa ona bağlan; yoksa ikon-only ya da sabit TR — kodu kontrol et).
+
 > **SIRADAKİ ÖNCELİK — Kerem karar verecek (adaylar):**
-> 1. **Boss reward (A)** + **Şifa alan etkisi (B)** — yukarıda madde 4, ikisi de düşük riskli,
->    karınca HP gerektirmez, mevcut sistemlere temiz oturur. Hızlı kazanç.
+> 1. **Ses/Pause kontrolleri** (madde 5) — mute + pause/resume tuşları. Düşük risk, karınca HP
+>    gerektirmez. Başlangıçta dil sistemi kontrolü gerekir.
 > 2. **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm mekaniği gerektirir (şu an
 >    karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca HP temeli
 >    kurulmalı; akrep "karıncaya vur" ve dungbeetle topunun karınca hedeflemesi de
 >    aynı temelin üstüne tek satırlık eklemeler olur.
-> 3. **Faz 4 kalan** — ana menü cila + power-up + lejant **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**,
->    (b) **ses genişletme** (temel Web Audio + sndPowerup var). localStorage skor düşüldü.
+> 3. **Faz 4 kalan** — ana menü cila + power-up + lejant + boss reward + şifa alan etkisi
+>    **✓ TAMAMLANDI**. Kalan: (a) **HUD cila**, (b) **ses genişletme** (temel Web Audio + sndPowerup
+>    var). localStorage skor düşüldü.
 
 ### Ertelenen / Notlar
 - **Çok-tile bina ayak izi (footprint) — DÜŞÜK ÖNCELİK / YÜKSEK RİSK.** Binalar şu an
