@@ -72,7 +72,13 @@ function beep(freq, dur, type = "sine", vol = 0.15) {
   g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
   o.start(); o.stop(actx.currentTime + dur);
 }
-const sndFood    = () => beep(660, 0.07, "square", 0.06);
+let _lastFood = 0;
+function sndFood() {
+  const now = performance.now();
+  if (now - _lastFood < 80) return;   // 80ms içinde 2. kez çalma → toplu toplamada tek tık
+  _lastFood = now;
+  beep(660, 0.07, "square", 0.036);
+}
 const sndDeposit = () => { beep(520, 0.09, "sine", 0.1); beep(780, 0.11, "sine", 0.08); };
 const sndBorn    = () => beep(950, 0.14, "triangle", 0.11);
 const sndCatch   = () => beep(130, 0.25, "sawtooth", 0.16);
@@ -80,7 +86,7 @@ const sndPower   = () => { beep(700, 0.08, "square", 0.12); beep(1050, 0.12, "sq
 const sndBird    = () => { beep(1200, 0.12, "sawtooth", 0.16); beep(700, 0.15, "sawtooth", 0.14); }; // alçalan iki tonlu kısa çığlık (dalış)
 const sndBoom    = () => { beep(90, 0.18, "sawtooth", 0.2); beep(60, 0.3, "square", 0.16); }; // boss alan saldırısı darbesi
 const sndHeal    = () => beep(900, 0.1, "sine", 0.08); // ladybug şifa pulsu (hafif pozitif bip)
-function sndShoot() { beep(440, 0.05, 'square', 0.05); }          // kule ateşi: kısa, alçak, hafif (sık çalacak → kısık vol)
+function sndShoot() { beep(880, 0.04, 'triangle', 0.09); } // kule ateşi: kısa kuru orta-tiz tık, vuruş/müzikten ayrışır
 function sndWave()  { beep(330, 0.12, 'sawtooth', 0.12); setTimeout(()=>beep(440,0.14,'sawtooth',0.12),120); } // dalga: 2-nota alçaktan yükselen uyarı
 function sndBossSpawn(){ beep(160,0.25,'sawtooth',0.16); setTimeout(()=>beep(120,0.35,'square',0.16),200); }   // boss: derin, tehditkar iki ton
 // Power-up toplama: 3-notalı YÜKSELEN parlak arpej (~65ms ardışık → akor değil arpej hissi).
