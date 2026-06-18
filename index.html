@@ -1063,9 +1063,9 @@ function drawHUD() {
     const lowHP = p.icon === '❤️' && CONFIG.QUEEN.MAX_HP > 0 &&
                   hudQueenHP / CONFIG.QUEEN.MAX_HP < 0.30;
     ctx.save();
-    ctx.globalAlpha = lowHP ? 0.9 : 0.35;
+    ctx.globalAlpha = lowHP ? 0.9 : 0.7;
     ctx.strokeStyle = lowHP ? HUD.danger : HUD.gold;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     rrect(px + 0.5, pad + 0.5, pw - 1, ph - 1, HUD.r.panel); ctx.stroke();
     ctx.restore();
 
