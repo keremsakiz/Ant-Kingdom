@@ -1901,10 +1901,7 @@ function drawUpgradeMenu() {
   const cfg = CONFIG.BUILDINGS[b.type];
   const L   = upgradeMenuLayout(b);
   ctx.save();
-  // Panel
-  ctx.fillStyle = HUD.panelFill;
-  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.fill();
-  ctx.strokeStyle = HUD.gold; ctx.lineWidth = 1.6; ctx.stroke();
+  drawMenuPanel(L);
   const cx = L.bx + L.w / 2;
   // Başlık: emoji + isim
   ctx.textAlign = 'center';
@@ -1922,22 +1919,72 @@ function drawUpgradeMenu() {
   ctx.fillText(fitText(effectLine(b), L.w - 16), cx, L.by + 55);
   // Buton ya da MAX
   if (b.level >= 6) {
+    // MAX: koyu gölge ile pop (renk inline #7fff8a aynen korunur)
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
     ctx.font = 'bold 13px ' + HUD.font;
     ctx.fillStyle = '#7fff8a';
     ctx.fillText('★ MAX SEVİYE ★', cx, L.by + L.h - 14);
+    ctx.restore();
   } else {
     const cost   = upgradeCostFor(b.type, b.level + 1);
-    const afford = food >= cost;
-    ctx.globalAlpha = afford ? 1 : 0.45;
-    ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
-    rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.menuBtn); ctx.fill();
-    ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.font = 'bold 12px ' + HUD.font;
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
-    ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
-    ctx.globalAlpha = 1;
+    drawMenuButton(L, food >= cost, '⬆ Yükselt (' + cost + ' 🍃)', cx);
   }
+  ctx.restore();
+}
+
+/** Upgrade + yuva menüsü ORTAK panel çizimi: alt gölgeli dolgu + altın kenarlık +
+ *  üst highlight (kasıtlı birebir aynı stil). ctx state çağıranın save'i içinde. */
+function drawMenuPanel(L) {
+  // Dolgu — SADECE dolguya alt gölge
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = HUD.panelFill;
+  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.fill();
+  ctx.restore();
+  // Altın kenarlık (gölgesiz)
+  ctx.strokeStyle = HUD.gold; ctx.lineWidth = 1.6;
+  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.stroke();
+  // Üst kenar highlight (cam/derinlik hissi — pill'lerle aynı dil)
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(L.bx + HUD.r.panel, L.by + 0.5);
+  ctx.lineTo(L.bx + L.w - HUD.r.panel, L.by + 0.5);
+  ctx.stroke();
+}
+
+/** Upgrade + yuva menüsü ORTAK "Yükselt" butonu: afford'da gölge+highlight'lı parlak,
+ *  yetmeyende soluk gövde ama TAM OPAK kırmızı (HUD.cantAfford) uyarı metni. */
+function drawMenuButton(L, afford, label, cx) {
+  // Buton arka — afford'da hafif derinlik (gölge), disabled'da soluk düz
+  ctx.save();
+  ctx.globalAlpha = afford ? 1 : 0.45;
+  if (afford) { ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1; }
+  ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
+  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.menuBtn); ctx.fill();
+  ctx.restore();
+  // Kenarlık + (afford'da) üst highlight + metin — gölgesiz
+  ctx.save();
+  ctx.globalAlpha = afford ? 1 : 0.45;
+  ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2;
+  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.menuBtn); ctx.stroke();
+  if (afford) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(L.btn.x + HUD.r.menuBtn, L.btn.y + 0.5);
+    ctx.lineTo(L.btn.x + L.btn.w - HUD.r.menuBtn, L.btn.y + 0.5);
+    ctx.stroke();
+  }
+  ctx.font = 'bold 12px ' + HUD.font;
+  ctx.textBaseline = 'middle';
+  if (!afford) ctx.globalAlpha = 1; // yetmeyen uyarı net (gövde soluk kalır)
+  ctx.fillStyle = afford ? '#fff' : HUD.cantAfford;
+  ctx.fillText(label, cx, L.btn.y + L.btn.h / 2 + 1);
   ctx.restore();
 }
 
@@ -2001,10 +2048,8 @@ function drawNestMenu() {
   const cost = nestUpgradeCost();
   const afford = food >= cost;
   ctx.save();
-  // Panel — drawUpgradeMenu ile AYNI değerler (renk/opaklık/yuvarlaklık/çizgi)
-  ctx.fillStyle = HUD.panelFill;
-  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.fill();
-  ctx.strokeStyle = HUD.gold; ctx.lineWidth = 1.6; ctx.stroke();
+  // Panel — drawUpgradeMenu ile ORTAK çizim (renk/opaklık/yuvarlaklık/gölge/highlight aynı)
+  drawMenuPanel(L);
   const cx = L.bx + L.w / 2;
   // Başlık: emoji + isim (bina menüsündeki "emoji + name" satırıyla aynı font/konum)
   ctx.textAlign = 'center';
@@ -2020,16 +2065,8 @@ function drawNestMenu() {
   ctx.font = '10px ' + HUD.font;
   ctx.fillStyle = HUD.effectGreen;
   ctx.fillText('Max HP: ' + CONFIG.QUEEN.MAX_HP + ' → ' + (CONFIG.QUEEN.MAX_HP + 50), cx, L.by + 55);
-  // Yükselt butonu — drawUpgradeMenu butonuyla AYNI stil + afford renklendirmesi
-  ctx.globalAlpha = afford ? 1 : 0.45;
-  ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
-  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.menuBtn); ctx.fill();
-  ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
-  ctx.font = 'bold 12px ' + HUD.font;
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
-  ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
-  ctx.globalAlpha = 1;
+  // Yükselt butonu — drawUpgradeMenu butonuyla ORTAK (drawMenuButton)
+  drawMenuButton(L, afford, '⬆ Yükselt (' + cost + ' 🍃)', cx);
   ctx.restore();
 }
 
