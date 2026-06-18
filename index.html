@@ -1019,6 +1019,7 @@ const HUD = {
   danger:     '#ff6b6b',              // düşük queen HP uyarı çizgisi
   affordText: '#ffe08f',
   affordText2:'#ffe8b0',
+  cantAfford: '#ff8888',              // parası yetmeyen bina fiyatı (kırmızımsı)
   effectGreen:'#9fe89f',
   r: { panel: 10, binaBtn: 8, menuBtn: 7 },  // mevcut rrect yarıçapları
 };
@@ -1086,6 +1087,16 @@ function drawHUD() {
   const barH = 80;
   ctx.fillStyle = HUD.barFill;
   ctx.fillRect(0, H - barH, W, barH);
+  // Üst kenar ayraç çizgisi — oyun alanından net ayrılsın (altın, düşük opaklık)
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = HUD.gold;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H - barH + 0.5);
+  ctx.lineTo(W, H - barH + 0.5);
+  ctx.stroke();
+  ctx.restore();
 
   const btnW = 50, btnH = 58, btnGap = 4; // 7 bina: 7×50 + 6×4 = 374px → 390px baz ekrana sığar
   const totalBtnW = BUILDING_TYPES.length * btnW + (BUILDING_TYPES.length - 1) * btnGap;
@@ -1097,13 +1108,24 @@ function drawHUD() {
   for (const type of BUILDING_TYPES) {
     const cfg    = CONFIG.BUILDINGS[type];
     const afford = food >= cfg.cost;
-    ctx.globalAlpha = afford ? 1 : 0.4;
+    const cx     = bx + btnW / 2;
+
+    // Arka dolgu — SADECE dolguya drop shadow (afford'da belirgin, soluklarda hafif)
+    ctx.save();
+    ctx.globalAlpha = afford ? 1 : 0.45;
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = afford ? 3 : 1.5;
+    ctx.shadowOffsetY = 1;
     ctx.fillStyle = 'rgba(50,35,15,0.85)';
     rrect(bx, by, btnW, btnH, HUD.r.binaBtn); ctx.fill();
+    ctx.restore();
+
+    // Kenarlık + içerik — gölgesiz; soluk butonlarda globalAlpha ile geneli kıs
+    ctx.save();
+    ctx.globalAlpha = afford ? 1 : 0.45;
     ctx.strokeStyle = afford ? HUD.gold : '#6a4520';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    const cx = bx + btnW / 2;
+    ctx.lineWidth = afford ? 1.5 : 1.2;
+    rrect(bx, by, btnW, btnH, HUD.r.binaBtn); ctx.stroke();
     // Emoji üstte
     ctx.font = '19px sans-serif';
     ctx.textBaseline = 'middle';
@@ -1116,9 +1138,10 @@ function drawHUD() {
     // Fiyat altta
     ctx.font = 'bold 11px ' + HUD.font;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = afford ? HUD.affordText : '#ff8888';
+    ctx.fillStyle = afford ? HUD.affordText : HUD.cantAfford;
     ctx.fillText(cfg.cost, cx, by + btnH - 6);
-    ctx.globalAlpha = 1;
+    ctx.restore();
+
     bx += btnW + btnGap;
   }
   ctx.restore();
