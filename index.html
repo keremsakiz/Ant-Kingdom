@@ -1138,6 +1138,7 @@ function drawHUD() {
     // Fiyat altta
     ctx.font = 'bold 11px ' + HUD.font;
     ctx.textBaseline = 'alphabetic';
+    if (!afford) ctx.globalAlpha = 1; // yetmeyen fiyat uyarısı net kırmızı (gövde soluk kalır)
     ctx.fillStyle = afford ? HUD.affordText : HUD.cantAfford;
     ctx.fillText(cfg.cost, cx, by + btnH - 6);
     ctx.restore();
