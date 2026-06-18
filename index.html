@@ -2082,14 +2082,22 @@ function drawRadialMenu() {
     const placeOK   = canPlaceTypeAt(type, radialMenu.col, radialMenu.row);
     const enabled   = afford && !limitFull && placeOK;
 
+    // Daire dolgusu — SADECE dolguya drop shadow (enabled belirgin, disabled hafif)
+    ctx.save();
     ctx.globalAlpha = enabled ? 1 : 0.42;
-
-    ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2);
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = enabled ? 3 : 1.5;
+    ctx.shadowOffsetY = 1;
     ctx.fillStyle = enabled ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Kenarlık + emoji + etiket — gölgesiz; disabled'da geneli kıs
+    ctx.save();
+    ctx.globalAlpha = enabled ? 1 : 0.42;
     ctx.strokeStyle = enabled ? HUD.gold : '#7a3030';
     ctx.lineWidth   = 1.8;
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2); ctx.stroke();
 
     ctx.font         = '16px sans-serif';
     ctx.textAlign    = 'center';
@@ -2100,11 +2108,11 @@ function drawRadialMenu() {
     // Etiket: limit dolu → "DOLU", yuva-çevresi değil → "YUVA", yoksa fiyat.
     ctx.font         = 'bold 10px ' + HUD.font;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = enabled ? HUD.affordText : '#ff8888';
+    if (!enabled) ctx.globalAlpha = 1; // uyarı/fiyat net (daire soluk kalır)
+    ctx.fillStyle    = enabled ? HUD.affordText : HUD.cantAfford;
     const label = limitFull ? 'DOLU' : (!placeOK ? 'YUVA' : cfg.cost);
     ctx.fillText(label, ix, iy + RADIAL_IR + 13);
-
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
   ctx.restore();
 }
