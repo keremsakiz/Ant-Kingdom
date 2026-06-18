@@ -142,8 +142,8 @@ function drawMuteButton() {
   const bx = W - s - 16, by = 16;     // sağ üst köşe, 16px margin
   muteBtn = { x: bx, y: by, w: s, h: s };
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  rrect(bx, by, s, s, 10); ctx.fill();
+  ctx.fillStyle = HUD.btnFill;
+  rrect(bx, by, s, s, HUD.r.panel); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = '22px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -161,8 +161,8 @@ function drawPauseButton() {
   const bx = W - s - 16 - s - 8, by = 16;   // mute'un solu
   pauseBtn = { x: bx, y: by, w: s, h: s };
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  rrect(bx, by, s, s, 10); ctx.fill();
+  ctx.fillStyle = HUD.btnFill;
+  rrect(bx, by, s, s, HUD.r.panel); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = '22px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1005,6 +1005,23 @@ function fitLabel(name, maxW, prefMax = 9, prefMin = 7) {
   return { text: fitText(name, maxW), px: prefMin };
 }
 
+// Merkezi HUD/menü tema sabiti — değerler koddaki inline string'lerle BİREBİR aynı
+// (saf refactor, görsel değişmez). r.* yarıçapları değerle eşlenir (isimler gevşek):
+//   r.panel(10) → pill'ler + mute/pause + upgrade/nest panel · r.btn(8) → bina butonları
+//   r.pill(7)   → upgrade/nest "Yükselt" aksiyon butonu
+const HUD = {
+  font: '-apple-system, sans-serif',
+  panelFill:  'rgba(24,18,8,0.95)',   // upgrade + nest panel
+  pillFill:   'rgba(0,0,0,0.48)',
+  barFill:    'rgba(0,0,0,0.52)',     // alt bina paneli
+  btnFill:    'rgba(0,0,0,0.35)',     // buton arka
+  gold:       '#c8a050',              // altın kenarlık
+  affordText: '#ffe08f',
+  affordText2:'#ffe8b0',
+  effectGreen:'#9fe89f',
+  r: { pill: 7, panel: 10, btn: 8 },  // mevcut rrect yarıçapları
+};
+
 function drawHUD() {
   const pad = 8, ph = 34, gap = 5;
   const pills = [
@@ -1014,14 +1031,14 @@ function drawHUD() {
     { icon: '⏱',  val: String(hudTime)   },
     { icon: '❤️', val: String(hudQueenHP) },
   ];
-  ctx.font = '13px -apple-system, sans-serif';
+  ctx.font = '13px ' + HUD.font;
   let px = pad;
   for (const p of pills) {
     const txt = p.icon + ' ' + p.val;
     const tw  = ctx.measureText(txt).width;
     const pw  = tw + 22;
-    ctx.fillStyle = 'rgba(0,0,0,0.48)';
-    rrect(px, pad, pw, ph, 10); ctx.fill();
+    ctx.fillStyle = HUD.pillFill;
+    rrect(px, pad, pw, ph, HUD.r.panel); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'left';
     ctx.fillText(txt, px + 11, pad + ph * 0.65);
@@ -1030,7 +1047,7 @@ function drawHUD() {
 
   // Alt bina paneli
   const barH = 80;
-  ctx.fillStyle = 'rgba(0,0,0,0.52)';
+  ctx.fillStyle = HUD.barFill;
   ctx.fillRect(0, H - barH, W, barH);
 
   const btnW = 50, btnH = 58, btnGap = 4; // 7 bina: 7×50 + 6×4 = 374px → 390px baz ekrana sığar
@@ -1045,8 +1062,8 @@ function drawHUD() {
     const afford = food >= cfg.cost;
     ctx.globalAlpha = afford ? 1 : 0.4;
     ctx.fillStyle = 'rgba(50,35,15,0.85)';
-    rrect(bx, by, btnW, btnH, 8); ctx.fill();
-    ctx.strokeStyle = afford ? '#c8a050' : '#6a4520';
+    rrect(bx, by, btnW, btnH, HUD.r.btn); ctx.fill();
+    ctx.strokeStyle = afford ? HUD.gold : '#6a4520';
     ctx.lineWidth = 1.2;
     ctx.stroke();
     const cx = bx + btnW / 2;
@@ -1057,12 +1074,12 @@ function drawHUD() {
     ctx.fillText(cfg.emoji, cx, by + 15);
     // İsim ortada — tam sığsın diye fontu küçülterek dene (çirkin "…" kesme olmasın)
     const lbl = fitLabel(cfg.name, btnW - 6); // fitLabel ctx.font'u kurar
-    ctx.fillStyle = afford ? '#ffe8b0' : '#caa080';
+    ctx.fillStyle = afford ? HUD.affordText2 : '#caa080';
     ctx.fillText(lbl.text, cx, by + 33);
     // Fiyat altta
-    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.font = 'bold 11px ' + HUD.font;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = afford ? '#ffe08f' : '#ff8888';
+    ctx.fillStyle = afford ? HUD.affordText : '#ff8888';
     ctx.fillText(cfg.cost, cx, by + btnH - 6);
     ctx.globalAlpha = 1;
     bx += btnW + btnGap;
@@ -1824,27 +1841,27 @@ function drawUpgradeMenu() {
   const L   = upgradeMenuLayout(b);
   ctx.save();
   // Panel
-  ctx.fillStyle = 'rgba(24,18,8,0.95)';
-  rrect(L.bx, L.by, L.w, L.h, 10); ctx.fill();
-  ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.fillStyle = HUD.panelFill;
+  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.fill();
+  ctx.strokeStyle = HUD.gold; ctx.lineWidth = 1.6; ctx.stroke();
   const cx = L.bx + L.w / 2;
   // Başlık: emoji + isim
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.font = 'bold 13px ' + HUD.font;
   ctx.fillStyle = '#fff';
   ctx.fillText(cfg.emoji + ' ' + fitText(cfg.name, L.w - 30), cx, L.by + 20);
   // Seviye + HP
-  ctx.font = '11px -apple-system, sans-serif';
-  ctx.fillStyle = '#ffe08f';
+  ctx.font = '11px ' + HUD.font;
+  ctx.fillStyle = HUD.affordText;
   ctx.fillText('Sv ' + b.level + '/6   ❤️ ' + Math.round(b.hp) + '/' + b.maxHP, cx, L.by + 38);
   // Etkiye özgü satır: mevcut → yükseltince (MAX'ta sadece mevcut)
-  ctx.font = '10px -apple-system, sans-serif';
-  ctx.fillStyle = '#9fe89f';
+  ctx.font = '10px ' + HUD.font;
+  ctx.fillStyle = HUD.effectGreen;
   ctx.fillText(fitText(effectLine(b), L.w - 16), cx, L.by + 55);
   // Buton ya da MAX
   if (b.level >= 6) {
-    ctx.font = 'bold 13px -apple-system, sans-serif';
+    ctx.font = 'bold 13px ' + HUD.font;
     ctx.fillStyle = '#7fff8a';
     ctx.fillText('★ MAX SEVİYE ★', cx, L.by + L.h - 14);
   } else {
@@ -1852,9 +1869,9 @@ function drawUpgradeMenu() {
     const afford = food >= cost;
     ctx.globalAlpha = afford ? 1 : 0.45;
     ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
-    rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, 7); ctx.fill();
+    rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.pill); ctx.fill();
     ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.font = 'bold 12px -apple-system, sans-serif';
+    ctx.font = 'bold 12px ' + HUD.font;
     ctx.textBaseline = 'middle';
     ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
     ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
@@ -1924,30 +1941,30 @@ function drawNestMenu() {
   const afford = food >= cost;
   ctx.save();
   // Panel — drawUpgradeMenu ile AYNI değerler (renk/opaklık/yuvarlaklık/çizgi)
-  ctx.fillStyle = 'rgba(24,18,8,0.95)';
-  rrect(L.bx, L.by, L.w, L.h, 10); ctx.fill();
-  ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.fillStyle = HUD.panelFill;
+  rrect(L.bx, L.by, L.w, L.h, HUD.r.panel); ctx.fill();
+  ctx.strokeStyle = HUD.gold; ctx.lineWidth = 1.6; ctx.stroke();
   const cx = L.bx + L.w / 2;
   // Başlık: emoji + isim (bina menüsündeki "emoji + name" satırıyla aynı font/konum)
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.font = 'bold 13px ' + HUD.font;
   ctx.fillStyle = '#fff';
   ctx.fillText('👑 Yuva', cx, L.by + 20);
   // HP satırı (bina "Sv X/6 ❤️ hp/max" satırıyla aynı font/renk/konum)
-  ctx.font = '11px -apple-system, sans-serif';
-  ctx.fillStyle = '#ffe08f';
+  ctx.font = '11px ' + HUD.font;
+  ctx.fillStyle = HUD.affordText;
   ctx.fillText('❤️ ' + Math.round(hudQueenHP) + '/' + CONFIG.QUEEN.MAX_HP, cx, L.by + 38);
   // Etki satırı: mevcut → yükseltince (bina effectLine satırıyla aynı font/renk/konum)
-  ctx.font = '10px -apple-system, sans-serif';
-  ctx.fillStyle = '#9fe89f';
+  ctx.font = '10px ' + HUD.font;
+  ctx.fillStyle = HUD.effectGreen;
   ctx.fillText('Max HP: ' + CONFIG.QUEEN.MAX_HP + ' → ' + (CONFIG.QUEEN.MAX_HP + 50), cx, L.by + 55);
   // Yükselt butonu — drawUpgradeMenu butonuyla AYNI stil + afford renklendirmesi
   ctx.globalAlpha = afford ? 1 : 0.45;
   ctx.fillStyle = afford ? 'rgba(40,90,30,0.95)' : 'rgba(70,40,20,0.9)';
-  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, 7); ctx.fill();
+  rrect(L.btn.x, L.btn.y, L.btn.w, L.btn.h, HUD.r.pill); ctx.fill();
   ctx.strokeStyle = afford ? '#7fdf5a' : '#7a5530'; ctx.lineWidth = 1.2; ctx.stroke();
-  ctx.font = 'bold 12px -apple-system, sans-serif';
+  ctx.font = 'bold 12px ' + HUD.font;
   ctx.textBaseline = 'middle';
   ctx.fillStyle = afford ? '#fff' : '#ffb0a0';
   ctx.fillText('⬆ Yükselt (' + cost + ' 🍃)', cx, L.btn.y + L.btn.h / 2 + 1);
@@ -2009,7 +2026,7 @@ function drawRadialMenu() {
     ctx.beginPath(); ctx.arc(ix, iy, RADIAL_IR, 0, Math.PI * 2);
     ctx.fillStyle = enabled ? 'rgba(30,22,10,0.93)' : 'rgba(50,15,15,0.88)';
     ctx.fill();
-    ctx.strokeStyle = enabled ? '#c8a050' : '#7a3030';
+    ctx.strokeStyle = enabled ? HUD.gold : '#7a3030';
     ctx.lineWidth   = 1.8;
     ctx.stroke();
 
@@ -2020,9 +2037,9 @@ function drawRadialMenu() {
     ctx.fillText(cfg.emoji, ix, iy - 2);
 
     // Etiket: limit dolu → "DOLU", yuva-çevresi değil → "YUVA", yoksa fiyat.
-    ctx.font         = 'bold 10px -apple-system, sans-serif';
+    ctx.font         = 'bold 10px ' + HUD.font;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = enabled ? '#ffe08f' : '#ff8888';
+    ctx.fillStyle    = enabled ? HUD.affordText : '#ff8888';
     const label = limitFull ? 'DOLU' : (!placeOK ? 'YUVA' : cfg.cost);
     ctx.fillText(label, ix, iy + RADIAL_IR + 13);
 
