@@ -385,29 +385,85 @@ dayandın...", ≤9 "Güçlü bir savunmaydı!", 10+ "Efsanevi bir koloni! Rekor
   Veri akışı doğru; "wave 8'de wave-1 mesajı" gözlemi koddan üretilemiyor → muhtemelen tarayıcı cache
   (sert yenileme önerildi).
 
+### Faz 4 — HUD Cila (TAMAMLANDI, bu oturum — MERGE BEKLİYOR) ✅ FAZ 4'ÜN SON PARÇASI
+
+> Faz 4'ün tek kalan parçasıydı; bittiğinde **Faz 4 TAM KAPANDI**. Beş alt parça, hepsi koddan
+> doğrulandı. Ortak tasarım dili: afford/non-afford netliği + drop shadow derinliği + ince altın
+> iç çizgi + (gerekli yerde) tam opak kırmızı uyarı.
+
+**P1 — Merkezi HUD tema sabiti (`780b4bf`, saf refactor — görsel AYNI):**
+- Dağınık inline renk/font/opaklık/radius string'leri tek `const HUD` objesine alındı
+  (`drawHUD` öncesi tanımlı). Alanlar: `font`, `panelFill`, `pillFill`, `barFill`, `btnFill`,
+  `gold`, `danger`, `affordText`, `affordText2`, `cantAfford`, `effectGreen`, `r{panel,binaBtn,menuBtn}`.
+- Değerler koddaki gerçek string'lerle birebir; `drawHUD`/`drawUpgradeMenu`/`drawNestMenu`/
+  `drawRadialMenu`/`drawMuteButton`/`drawPauseButton` bu sabitten okur. Ternary'lerin disabled
+  dalları + emoji fontları (`NNpx sans-serif`) bilinçle inline bırakıldı.
+
+**P2a — Pill görsel yenileme + r.* isim düzeltme (`1daa5ee` + `7660fcc`):**
+- Üst pill'ler: ikon (15px) solda + değer (bold 13px) sağda, ikisi de dikey ortalı. Arka dolguya
+  **SADECE** drop shadow (`save→shadow→fill→restore`, ikon/metne sızmaz), üst kenar highlight
+  (`rgba(255,255,255,0.12)`), ince iç altın kenarlık (lineWidth 1.5, gold @ alpha 0.7).
+- **Queen HP uyarısı:** ❤️ pill'inde `hudQueenHP/MAX < 0.30` ise iç çizgi altın yerine
+  **`HUD.danger` (#ff6b6b)** @ alpha 0.9. Diğer pill'ler hep altın.
+- `r.*` isimleri kullanımla örtüşecek şekilde düzeltildi: `{ panel:10, binaBtn:8, menuBtn:7 }`
+  (eski gevşek `pill/btn` adları kaldırıldı; tüm referanslar güncellendi).
+
+**P2b — Alt bina paneli afford netliği + derinlik (`2c102ec` + fix `0580929`):**
+- Panel üst kenarına altın ayraç çizgisi (alpha 0.5). Her bina butonunda: dolguya drop shadow
+  (afford belirgin / soluk hafif), afford kenarlık `HUD.gold` lineWidth 1.5, yetmeyen buton
+  `globalAlpha 0.45` soluk + kenarlık `#6a4520`.
+- **Fix:** yetmeyen fiyat metni `globalAlpha=1`'e çekilip **tam opak `HUD.cantAfford` (#ff8888)**
+  çizilir — gövde soluk kalsa da fiyat uyarısı net kırmızı parlar (emoji/isim soluk).
+
+**P3a — Radyal menü fiyat + ikon derinliği (`4a89145`):**
+- İkon dairesi dolgusuna drop shadow (enabled belirgin / disabled hafif), kenarlık+emoji+etiket
+  ayrı gölgesiz blokta. Disabled etiket (`DOLU`/`YUVA`/fiyat) **tam opak `HUD.cantAfford`** —
+  daire soluk kalır ama uyarı net. `RADIAL_R`/`RADIAL_IR`/`radialIconPos` geometrisine dokunulmadı.
+- **Not (açık konu):** radyale özgü 3 inline renk (`rgba(30,22,10,0.93)` enabled dolgu /
+  `rgba(50,15,15,0.88)` disabled dolgu / `#7a3030` disabled kenarlık) HUD'a alınmadı (sadece radyalde).
+
+**P3b — Upgrade + yuva menü cila (`eeaad44`):**
+- İki menü artık **gerçekten ortaklaştı**: yeni `drawMenuPanel(L)` + `drawMenuButton(L,afford,label,cx)`
+  helper'larını HEM `drawUpgradeMenu` HEM `drawNestMenu` çağırır (kasıtlı birebir eşleşme tek kaynaktan).
+- Panel: alt drop shadow (`rgba(0,0,0,0.45)`, blur 6, offsetY 2) + altın kenarlık + üst highlight
+  (`rgba(255,255,255,0.10)`). Buton: afford'da gölge+üst highlight (basılabilir his); yetmeyende
+  gövde soluk ama metin **tam opak `HUD.cantAfford`** (eski disabled metin `#ffb0a0` değişti).
+- **MAX SEVİYE** (sadece upgrade): `★ MAX SEVİYE ★` koyu gölgeyle (`rgba(0,0,0,0.5)`, blur 4)
+  pop eder; renk `#7fff8a` aynen korundu.
+- **Disabled renk raporu:** menü butonu disabled tonları (`rgba(70,40,20,0.9)` / `#7a5530`)
+  radyalinkinden **FARKLI** → ortak `disabledFill`/`disabledBorder` sabitine alınmadı (birebir eşleşmiyor).
+
+> **HUD cila tasarım disiplini (referans):** drop shadow HER ZAMAN `save→shadow→fill→restore`
+> ile **sadece arka dolguya** uygulanır; ikon/metin gölgesiz ayrı blokta. `globalAlpha` daima
+> save/restore içinde. Yetmeyen/uyarı metni `globalAlpha=1`'e çekilip tam opak kırmızı çizilir.
+> Yeni sık-çalan görsel eklerken bu deseni taklit et.
+
 ---
 
 ## 3. SON COMMIT'LER
 
 ```
+(bu docs commit'inin kendisi HEAD olacak — git log ile en günceli doğrula)
+eeaad44 Faz4 HUD cila P3b: upgrade + yuva menu cila
+4a89145 Faz4 HUD cila P3a: radyal menu fiyat + ikon derinligi
+0580929 Faz4 HUD cila P2b fix: yetmeyen fiyat tam opak kirmizi
+2c102ec Faz4 HUD cila P2b: alt bina paneli afford netligi + derinlik
+7660fcc Faz4 HUD cila P2a ayar: pill altin ic cizgi belirginlestir
+1daa5ee Faz4 HUD cila P2a: pill gorsel yenileme + r.* isim duzeltme
+780b4bf Faz4 HUD cila P1: merkezi HUD tema sabiti (refactor, gorsel ayni)
+2e129b5 docs: DURUM.md Faz4 ses + gameover polish tamamlandi, HUD cila sirada
 df02f88 Faz4: gameover dinamik tesvik mesaji (dalgaya gore)
 c6a6a6f Fix: gameover basligi 'Sure Doldu' -> 'Yuva Dustu' (queen olumu)
 2d30d08 Faz4 ses P2: queen hasar (throttle) + game over sesi
 cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
-8b0ee3b Faz4 ses P1 ayar: yem throttle 80->400ms (ara sira tik)
-779768d Faz4 ses P1 ayar: sndDeposit kis+throttle
-61568e2 Faz4 ses P1 ayar: sndShoot duyulurluk + sndFood kis+throttle
 1fc0471 Faz4 ses P1: kule atesi + dalga + boss spawn sesleri
-9d2db6d docs: DURUM.md mute + pause/resume tamamlandi (drawScene refactor)
 004d075 Faz4 Pause/Resume: PAUSED state, karartma + DURAKLADI, oyun ici tus
-8eadb10 docs: DURUM.md Faz4 menu+powerup tamamlandi
-7deedf1 Faz4 Menu P2c: lejant durust (kalkan cikti, enemyant+boss eklendi)
-b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
 ```
-> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **Bu oturumun commitleri
-> (`1fc0471` → `df02f88`: Faz 4 ses genişletme + game over polish) main'e MERGE EDİLMEDİ
-> — branch'te commitli, ayrı bir adımda topluca merge + push edilecek.** Öncesi (mute +
-> pause/resume `9d2db6d`'ye kadar) merge + push durumu için `git status -sb` ile doğrula.
+> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **Bu oturumun TÜM Faz 4 commitleri
+> (`1fc0471` → `eeaad44`: ses genişletme + game over polish + HUD cila P1→P3b) main'e
+> HENÜZ MERGE EDİLMEDİ — branch'te commitli, ayrı bir adımda topluca merge + push edilecek.
+> Merge sonrası bu not güncellenecek.** Öncesi (mute + pause/resume `9d2db6d`'ye kadar) merge +
+> push durumu için `git status -sb` ile doğrula.
 
 ---
 
@@ -434,16 +490,21 @@ b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
      topunun karınca hedeflemesi) HÂLÂ ertelenmiş — karınca hp/ölüm mekaniğiyle,
      karınca AI workstream'iyle birlikte gelecek.
 
-3. **Faz 4** — kısmen tamamlandı:
+3. ~~**Faz 4**~~ — **✓ TAM KAPANDI (bu oturum)** — tüm parçalar bitti, MERGE BEKLİYOR:
    - ~~**Ana menü cila**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 4 — Ana Menü Cila P1": skor kartı +
      dikey denge + dekor karınca arka katman) ve lejant dürüstlük güncellemesi.
    - ~~**Power-up sistemi**~~ — **✓ TAMAMLANDI** (YENİ, bkz. Bölüm 2 "Faz 4 — Power-up Sistemi":
      ⚡ hız + 🥚 yumurta, tap-to-collect, programatik çizim, sndPowerup arpeji).
-   - ~~**Ses genişletme**~~ — **✓ TAMAMLANDI** (bu oturum, MERGE BEKLİYOR; bkz. Bölüm 2 "Faz 4 —
+   - ~~**Ses genişletme**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 4 —
      Ses Genişletme + Game Over Polish": ses P1 sndShoot/sndWave/sndBossSpawn + yem sesi kıs/throttle
      + ses P2 sndQueenHurt/sndGameOver + game over başlık fix + dinamik teşvik mesajı).
+   - ~~**HUD cila**~~ — **✓ TAMAMLANDI (SON PARÇA)** (bkz. Bölüm 2 "Faz 4 — HUD Cila": P1 merkezi
+     tema sabiti + P2a pill yenileme/r.* isim + P2b alt panel afford + P3a radyal + P3b upgrade/yuva
+     menü). Afford netliği (yetmeyen fiyat tam opak kırmızı) + drop shadow derinliği + ince altın
+     çizgi + queen HP < %30 kırmızı uyarı.
    - **localStorage skor** — DÜŞÜLDÜ (zaten tam implement + test edildi).
-   - **Kalan (TEK)**: **HUD cila** (oyun-içi üst panel/balon/buton görsel iyileştirme).
+   - **➡️ Faz 4 artık tamamen bitti.** Tüm Faz 4 commitleri (`1fc0471` → `eeaad44`) topluca
+     main'e merge edilecek (ayrı adım, Kerem yönlendirecek).
 
 4. **Kerem talebi — ✓ TAMAMLANDI (A + B, bu oturum):** bkz. Bölüm 2 "Faz 4 — Boss Reward +
    Şifa Alan Etkisi". A: dalga-ölçekli boss yem ödülü + "+N 🍖" float (yerine geçer).
@@ -486,15 +547,20 @@ b610894 Faz4 Powerup: ayirt edici sndPowerup arpeji
      i18n/STRINGS/lang objesi yok — metinler doğrudan `fillText`'e gömülü). Tuşlar **ikon-only**
      yapıldı → **i18n ihtiyacı yok**. İleride dil katmanı eklenirse gömülü metinler tek tek çıkar.
 
-> **SIRADAKİ ÖNCELİK — Faz 4 KALAN: HUD CİLA.**
-> Faz 4'ün tek kalan parçası: **HUD cila** — oyun-içi üst panel + balon (radyal/upgrade/yuva
-> menüleri) + buton görsel iyileştirme. **Bu bitince Faz 4 TAM KAPANIR ve merge edilir**
-> (bu oturumun ses + gameover commitleri zaten merge bekliyor → HUD cila ile birlikte topluca).
+> **SIRADAKİ ÖNCELİK — FAZ 5 BAŞLANGICI: KARINCA HP / ÖLÜM MEKANİĞİ.**
+> Faz 4 tam kapandı (HUD cila son parçaydı). Sıradaki büyük iş: **karınca HP + ölüm mekaniği** —
+> şu an karıncalarda hp YOK (`Ant`'ta hp alanı yok, hiçbir yer `ant.active=false` yapmıyor;
+> bilinçle ertelenmişti). Bu **büyük, izole bir workstream**: ant AI'ya dokunur, balans gerektirir
+> (düşman dps vs karınca hp, doğum hızı), ve birçok ertelenen işin temelidir.
 >
-> **Sonraki büyük aday (Faz 4 sonrası):** **Enemyant soldier avı** — DİKKAT: karınca hp/ölüm
-> mekaniği gerektirir (şu an karıncalarda hp YOK, bilinçli ertelenmişti). Bu seçilirse önce karınca
-> HP temeli kurulmalı; akrep "karıncaya vur", dungbeetle topunun karınca hedeflemesi ve 🛡 Kalkan
-> power-up'ı da aynı temelin üstüne eklemeler olur.
+> **Karınca HP kurulunca açılan zincir (tek temel, çoklu küçük ekleme):**
+> - **Enemyant soldier avı** — temel kurulunca neredeyse **tek satır** eklenebilir.
+> - Akrep alan saldırısına "karıncaya da vur" (aynı yarıçap döngüsüne `ants` taraması — tek satır).
+> - Dungbeetle topunun karınca hedeflemesi.
+> - 🛡 Kalkan power-up'ı (şu an sadece görsel; koruyacak hp olmadığı için decrement loop EKLENMEDİ —
+>   bkz. Bölüm 2 "🛡 Kalkan bilinçle ATLANDI" notu) → hp gelince implement + lejanta geri eklenir.
+>
+> **Not:** Faz 5'e başlamadan önce Faz 4 commitlerinin main'e merge edilmesi beklenir (Kerem yönlendirecek).
 
 ### Ertelenen / Notlar
 - **SFX master bus YOK — bilinçli.** Tüm SFX `beep()` ile doğrudan `actx.destination`'a bağlanır
