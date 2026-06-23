@@ -2138,9 +2138,11 @@ function drawRadialMenu() {
 
     ctx.font         = '16px sans-serif';
     ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle    = '#fff';
-    ctx.fillText(cfg.emoji, ix, iy - 2);
+    const em = ctx.measureText(cfg.emoji);
+    const emY = iy + (em.actualBoundingBoxAscent - em.actualBoundingBoxDescent) / 2;
+    ctx.fillText(cfg.emoji, ix, emY);
 
     // Etiket: limit dolu → "DOLU", yuva-çevresi değil → "YUVA", yoksa fiyat.
     ctx.font         = 'bold 10px ' + HUD.font;
