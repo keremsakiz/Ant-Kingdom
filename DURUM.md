@@ -438,7 +438,7 @@ dayandın...", ≤9 "Güçlü bir savunmaydı!", 10+ "Efsanevi bir koloni! Rekor
 > save/restore içinde. Yetmeyen/uyarı metni `globalAlpha=1`'e çekilip tam opak kırmızı çizilir.
 > Yeni sık-çalan görsel eklerken bu deseni taklit et.
 
-### iOS/Safari Emoji Dikey Hizalama Bug'ı (TESPİT + KISMEN DÜZELTİLDİ)
+### iOS/Safari Emoji Dikey Hizalama Bug'ı (✓ TAMAMLANDI — iPad Safari'de doğrulandı)
 
 **Bug:** `ctx.textBaseline = 'middle'` WebKit'te (Safari) Chrome'dan **farklı oturuyor** —
 emojiler dikey olarak kayık çiziliyor. **Chrome'da sorun YOK.** Capacitor iOS build'inde de
@@ -447,21 +447,34 @@ görünecek (WKWebView = Safari motoru), yani App Store hedefi için kritik.
 **Çözüm deseni:** `textBaseline = 'middle'` yerine **`'alphabetic'` + elle dikey offset** — iki
 tarayıcıda da tutarlı oturur.
 
-**✓ DÜZELTİLDİ (koda yazıldı, merge edildi):**
+**✓ DÜZELTİLDİ (koda yazıldı, merge edildi, GitHub Pages'te canlı, iPad Safari'de doğrulandı):**
 - **Radyal menü emoji** (`drawRadialMenu`): `'middle'` → `'alphabetic'`, offset `iy + 2`. Alttaki
   fiyat/etiket satırı zaten `alphabetic`'ti, dokunulmadı.
 - **Alt bina paneli emoji** (`drawHUD`): `'middle'` → `'alphabetic'`, `by + 15` → `by + 22`. Emoji
   artık `middle` bırakmadığı için, hemen sonraki **isim satırına `textBaseline = 'middle'` koruması
   eklendi** (isim baseline'ı emoji'den miras alıyordu, kaymasın diye). Fiyat satırı (alphabetic) aynen.
+- **Yükselt paneli** (`drawUpgradeMenu`): emoji/metin hizalaması da `alphabetic` deseniyle düzeltildi.
 
-**⏳ BEKLEYEN — yükselt paneli can barı:** `drawUpgradeMenu` içindeki **❤️ + HP yazısı** (`Sv X/6
-❤️ hp/maxHP`) hizalaması henüz **incelenmedi**, offset **test edilmedi**. **Sıradaki iş.**
-
-**⏳ BEKLEYEN — uzaktan test:** arkadaş **yarın** Safari mobilde radyal + alt panel düzeldi mi
-kontrol edecek.
+**Test altyapısı (yeni — arkadaşa bağımlılık kalktı):** GitHub Pages zaten aktif:
+**https://keremsakiz.github.io/Ant-Kingdom/** — Kerem artık **iPad Safari'den** doğrudan buradan
+kendi testini yapıyor (uzaktan arkadaş testine bağımlı değil). Emoji düzeltmeleri burada doğrulandı.
 
 > **Not — 🗡️ Kışla emojisi:** hafif **yatay (sağa) kayması** var ama bu **sprite geçişinde
 > çözülecek**; şimdilik offset avı yapılmadı (yatay hizalama ayrı konu, dikey bug'dan bağımsız).
+
+### Yeni Tespit Edilen Safari Bug'ları (sıradaki işler — HENÜZ BAŞLANMADI)
+
+iPad Safari testinde (GitHub Pages) ortaya çıkan, henüz dokunulmamış 3 bug:
+
+1. **HUD pill "twitch" (layout titremesi):** sol üst HUD pill'leri (yem / karınca / dalga timer /
+   yuva canı) **sayı değişince yana esneyip düzeliyor** — değer genişliğine göre panel yeniden
+   ölçülüyor, layout titriyor. **Safari'de belirgin.** (Muhtemel kök: değer-bazlı dinamik genişlik
+   `measureText` → her değişimde pill genişliği zıplıyor; sabit/min genişlik gerekebilir.)
+2. **Ana menü başlık animasyonu:** "ANT KINGDOM" başlığı **Chrome'da animasyonlu/parıltılı**
+   geliyor, **Safari'de düz** görünüyor — CSS animasyon/efekt uyumsuzluğu (WebKit prefix ya da
+   desteklenmeyen özellik).
+3. **Ana menü 🐜 karınca emojisi Safari'de görünmüyor:** menü tepesindeki 🐜 emoji **Chrome'da var,
+   Safari'de yok/boş.**
 
 ---
 
