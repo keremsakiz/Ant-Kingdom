@@ -462,19 +462,55 @@ kendi testini yapıyor (uzaktan arkadaş testine bağımlı değil). Emoji düze
 > **Not — 🗡️ Kışla emojisi:** hafif **yatay (sağa) kayması** var ama bu **sprite geçişinde
 > çözülecek**; şimdilik offset avı yapılmadı (yatay hizalama ayrı konu, dikey bug'dan bağımsız).
 
-### Yeni Tespit Edilen Safari Bug'ları (sıradaki işler — HENÜZ BAŞLANMADI)
+### 3 Safari Render Bug'ı (✓ TAMAMLANDI — main'e merge edildi)
 
-iPad Safari testinde (GitHub Pages) ortaya çıkan, henüz dokunulmamış 3 bug:
+iPad Safari testinde (GitHub Pages) ortaya çıkan 3 bug çözüldü; tek commit'le (`Fix: 3 Safari
+render bug — menu emoji + title glow + HUD pill jitter`) düzeltildi ve **main'e merge edildi**:
 
-1. **HUD pill "twitch" (layout titremesi):** sol üst HUD pill'leri (yem / karınca / dalga timer /
-   yuva canı) **sayı değişince yana esneyip düzeliyor** — değer genişliğine göre panel yeniden
-   ölçülüyor, layout titriyor. **Safari'de belirgin.** (Muhtemel kök: değer-bazlı dinamik genişlik
-   `measureText` → her değişimde pill genişliği zıplıyor; sabit/min genişlik gerekebilir.)
-2. **Ana menü başlık animasyonu:** "ANT KINGDOM" başlığı **Chrome'da animasyonlu/parıltılı**
-   geliyor, **Safari'de düz** görünüyor — CSS animasyon/efekt uyumsuzluğu (WebKit prefix ya da
-   desteklenmeyen özellik).
-3. **Ana menü 🐜 karınca emojisi Safari'de görünmüyor:** menü tepesindeki 🐜 emoji **Chrome'da var,
-   Safari'de yok/boş.**
+1. **Ana menü 🐜 emojisi görünmüyordu (Safari):** menü tepesindeki büyük 🐜 (`drawMenu`) Chrome'da
+   vardı, Safari'de boştu. **Kök:** font `'52px sans-serif'` + explicit baseline yok → miras kalan
+   canvas state (`fillStyle`/`globalAlpha`/`shadow`) emojiyi görünmez bırakıyordu. **Çözüm:** font
+   `'-apple-system, sans-serif'`'e çevrildi + çizimden önce **explicit state reset** (`globalAlpha=1`,
+   `fillStyle='#000'`, `shadowBlur=0`, `shadowColor='transparent'`) + `textBaseline='alphabetic'` +
+   dikey offset (`H*0.22 + 18`). Yerel IP'de doğrulandı.
+2. **Ana menü başlık glow'u Safari'de düz görünüyordu:** "ANT KINGDOM" başlığı Chrome'da parıltılı,
+   Safari'de düz. **Kök:** `ctx.shadowBlur` + `fillText` WebKit'te zayıf/kayıp. **Çözüm:** shadowBlur
+   satırı KORUNDU (Chrome'da çalışıyor) + **manuel glow katmanı fallback** — her harf, asıl harften
+   önce `#c8840a` altınla `alpha = c.alpha * 0.22` çarpanıyla 5 offset'te çizilir (poor-man's glow).
+   `c.alpha` fade-in çarpanı manuel katmanlara da uygulandı → harf-harf fade-in mantığı/`measureText`
+   ox hesabı BOZULMADI.
+3. **HUD pill "twitch" (layout titremesi):** sol üst pill'ler (yem/karınca/dalga/timer/yuva canı)
+   sayı basamağı değişince yana esniyordu. **Kök:** `pw` her frame `measureText(p.val)`'e göre
+   değişiyordu → komşu pill'ler kayıyordu. **Çözüm:** her pill'e `minSample` (food/HP `'9999'`,
+   diğerleri `'88'`); modül seviyesi `hudPillMinW` cache'iyle min-genişlik **bir kez** hesaplanır
+   (her frame değil); loop'ta tek değişiklik `pw = Math.max(20+iw+6+vw, hudPillMinW[p.icon])`. Akış
+   `px += pw + gap` / `rrect` / `HUD.*` sabitlerine dokunulmadı.
+
+> **Not — 🗡️ Kışla yatay kayması ve genel emoji dikey hizası** önceki bölümde (iOS/Safari Emoji
+> Dikey Hizalama) çözülmüştü; bu 3 bug ondan AYRI (görünürlük + glow + layout).
+
+### Faz 4+ — PAUSED ekranı "Ana Menüye Dön" (✓ TAMAMLANDI, iki aşamalı onay)
+
+Mobilde oyundan menüye dönüş yolu yoktu (Escape sadece masaüstü + test-only). PAUSED ekranına
+**iki aşamalı onaylı "Ana Menüye Dön"** eklendi:
+
+- **Aşama 1:** "DURAKLADI" altında **▶ Devam Et** (resume) + **🏠 Ana Menü** butonları.
+- **Aşama 2** (Ana Menü'ye basınca): **"Çıkarsan skorun kaydedilmez!"** uyarısı + **Evet, Çık** /
+  **Vazgeç**. Vazgeç → aşama 1'e döner.
+- **KRİTİK — skor kaydı:** "Evet, Çık" `endGame()` ÇAĞIRMAZ; doğrudan `initMenu()` (state='MENU').
+  Skor kaydı SADECE `endGame`'de (`saveScore`) olduğu için **çıkışta skor kaydedilmez** (bilinçli).
+- **İzole eklendi:** mevcut `drawScene`/overlay/"DURAKLADI" çizimine + sağ üst mute/pause(▶) butonlarına
+  DOKUNULMADI. Yeni `pauseConfirmExit` flag'i + 4 buton rect'i (`pauseResumeBtn`/`pauseExitBtn`/
+  `pauseYesBtn`/`pauseNoBtn`); `togglePause` PLAYING'e dönerken flag'i sıfırlar; hit-test
+  `onPlayingTap`'te pause butonundan SONRA, `if(state==='PAUSED')return;`'den ÖNCE (aynı AABB deseni).
+  PAUSED ekranı dikey ortalandı (DURAKLADI `H/2-70`, butonlar merkez civarı).
+
+> **Not — Escape (keydown):** hâlâ **test-only `endGame()`** çağırıyor (`Escape && state==='PLAYING'`),
+> gerçek menü dönüşü DEĞİL — dokunulmadı. Gerçek menü dönüşü artık PAUSED ekranı butonlarıyla.
+>
+> **Not — localStorage origin'e özel:** skorlar origin başına ayrı saklanır (`antKingdomScores`/
+> `antKingdomBest`). GitHub Pages, `127.0.0.1` ve yerel IP (telefon testi) **ayrı skor kutuları**
+> tutar — aynı skor listesi beklenmemeli.
 
 ---
 
@@ -584,6 +620,10 @@ cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
    - **Dil sorusu ÇÖZÜLDÜ:** oyunda **çoklu dil YOK** (sabit Türkçe, sadece HTML `lang="tr"`;
      i18n/STRINGS/lang objesi yok — metinler doğrudan `fillText`'e gömülü). Tuşlar **ikon-only**
      yapıldı → **i18n ihtiyacı yok**. İleride dil katmanı eklenirse gömülü metinler tek tek çıkar.
+
+6. **3 Safari render bug'ı + PAUSED "Ana Menüye Dön" — ✓ TAMAMLANDI (bu oturum, main'e merge):**
+   bkz. Bölüm 2 "3 Safari Render Bug'ı" (menü emoji görünürlük + başlık glow fallback + HUD pill
+   min-genişlik kilidi) ve "PAUSED ekranı Ana Menüye Dön" (iki aşamalı onay, çıkışta skor kaydedilmez).
 
 > **SIRADAKİ ÖNCELİK — FAZ 5 BAŞLANGICI: KARINCA HP / ÖLÜM MEKANİĞİ.**
 > Faz 4 tam kapandı (HUD cila son parçaydı). Sıradaki büyük iş: **karınca HP + ölüm mekaniği** —
