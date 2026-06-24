@@ -641,10 +641,11 @@ function drawMenu() {
   for (const a of menuAnts) drawAntShape(a.x, a.y, a.angle, a.wig, '#e8542a', 1);
   ctx.globalAlpha = 1;
 
-  // Emoji karınca
-  ctx.font = '52px sans-serif';
+  // Emoji karınca — Safari fix: -apple-system + explicit alphabetic baseline (+dikey offset)
+  ctx.font = '52px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('🐜', W / 2, H * 0.22);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('🐜', W / 2, H * 0.22 + 18);
 
   // Başlık — harf harf fade
   ctx.font = 'bold 40px -apple-system, sans-serif';
@@ -652,11 +653,19 @@ function drawMenu() {
   const tW    = ctx.measureText(TITLE_STR).width;
   let   ox    = W / 2 - tW / 2;
   const titleY = H * 0.31;
-  ctx.shadowColor = '#c8840a'; ctx.shadowBlur = 14;
+  ctx.shadowColor = '#c8840a'; ctx.shadowBlur = 14;   // Chrome'da çalışır; Safari için altta manuel glow
+  // Safari fallback: shadowBlur fillText üstünde zayıf → her harfi önce hafif yarı saydam altınla
+  // birkaç offset'te çiz (poor-man's glow), sonra asıl harfi üstüne. fade-in alpha çarpanı korunur.
+  const GLOW_OFF = [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]];
   for (const c of titleChars) {
+    const cw = ctx.measureText(c.ch).width;
+    ctx.fillStyle = '#c8840a';
+    for (const [dx, dy] of GLOW_OFF) {
+      ctx.globalAlpha = c.alpha * 0.22;
+      ctx.fillText(c.ch, ox + dx, titleY + dy);
+    }
     ctx.globalAlpha = c.alpha;
     ctx.fillStyle = '#ffe08f';
-    const cw = ctx.measureText(c.ch).width;
     ctx.fillText(c.ch, ox, titleY);
     ox += cw;
   }
@@ -1024,15 +1033,30 @@ const HUD = {
   r: { panel: 10, binaBtn: 8, menuBtn: 7 },  // mevcut rrect yarıçapları
 };
 
+let hudPillMinW = null;  // pill başına sabit min-genişlik, bir kez hesaplanır (her frame değil)
+
 function drawHUD() {
   const pad = 8, ph = 34, gap = 5;
+  // minSample: o pill için beklenen EN GENİŞ değer (food/HP 4 hane, diğerleri 2 hane) → titreme önler
   const pills = [
-    { icon: '🍃', val: String(hudFood)   },
-    { icon: '🐜', val: String(hudPop)    },
-    { icon: '🌀', val: String(hudWave)   },
-    { icon: '⏱',  val: String(hudTime)   },
-    { icon: '❤️', val: String(hudQueenHP) },
+    { icon: '🍃', val: String(hudFood),    minSample: '9999' },
+    { icon: '🐜', val: String(hudPop),     minSample: '88'   },
+    { icon: '🌀', val: String(hudWave),    minSample: '88'   },
+    { icon: '⏱',  val: String(hudTime),    minSample: '88'   },
+    { icon: '❤️', val: String(hudQueenHP), minSample: '9999' },
   ];
+  // Safari fix: pill genişliğine sabit alt sınır → değer basamak değişince layout zıplamaz.
+  // minW'ler pw ile AYNI formülle bir kez hesaplanır, sonra cache'ten okunur.
+  if (!hudPillMinW) {
+    hudPillMinW = {};
+    for (const p of pills) {
+      ctx.font = '15px ' + HUD.font;
+      const iw = ctx.measureText(p.icon).width;
+      ctx.font = 'bold 13px ' + HUD.font;
+      const sw = ctx.measureText(p.minSample).width;
+      hudPillMinW[p.icon] = 20 + iw + 6 + sw;
+    }
+  }
   let px = pad;
   const cy = pad + ph / 2;
   for (const p of pills) {
@@ -1041,7 +1065,7 @@ function drawHUD() {
     const iw = ctx.measureText(p.icon).width;
     ctx.font = 'bold 13px ' + HUD.font;
     const vw = ctx.measureText(p.val).width;
-    const pw = 20 + iw + 6 + vw;
+    const pw = Math.max(20 + iw + 6 + vw, hudPillMinW[p.icon] || 0);
 
     // Arka plan — SADECE dolguya drop shadow (ikon/metne taşmasın → save/restore şart)
     ctx.save();
