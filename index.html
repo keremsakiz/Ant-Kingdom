@@ -152,10 +152,13 @@ function drawMuteButton() {
 }
 function togglePause() {
   if (state === 'PLAYING') state = 'PAUSED';
-  else if (state === 'PAUSED') state = 'PLAYING';
+  else if (state === 'PAUSED') { state = 'PLAYING'; pauseConfirmExit = false; }
 }
 // Pause butonu — SADECE oyun içi, mute'un soluna (8px boşluk), aynı stil.
 let pauseBtn = null;
+// PAUSED ekranı "Ana Menüye Dön" akışı (iki aşamalı onaylı)
+let pauseConfirmExit = false;
+let pauseResumeBtn = null, pauseExitBtn = null, pauseYesBtn = null, pauseNoBtn = null;
 function drawPauseButton() {
   const s = 44;
   const bx = W - s - 16 - s - 8, by = 16;   // mute'un solu
@@ -1213,6 +1216,14 @@ function onPlayingTap(x, y) {
       y >= pauseBtn.y && y <= pauseBtn.y + pauseBtn.h) {
     togglePause();
     return;
+  }
+  // PAUSED ekranı butonları — iki aşamalı "Ana Menüye Dön" akışı
+  if (state === 'PAUSED') {
+    const hit = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (hit(pauseResumeBtn)) { togglePause(); return; }
+    if (hit(pauseExitBtn))   { pauseConfirmExit = true; return; }
+    if (hit(pauseYesBtn))    { pauseConfirmExit = false; initMenu(); return; }  // skor KAYDEDİLMEZ (endGame yok)
+    if (hit(pauseNoBtn))     { pauseConfirmExit = false; return; }
   }
   // PAUSED iken buton DIŞI tap oyunu etkilemesin (bina kurma/power-up toplama yok).
   if (state === 'PAUSED') return;
@@ -3550,8 +3561,40 @@ function loop(ts) {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 36px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('DURAKLADI', W / 2, H / 2);
+    ctx.fillText('DURAKLADI', W / 2, H / 2 - 70);
     ctx.restore();
+    // Ana Menüye Dön akışı — iki aşamalı onaylı (overlay üstünde, butonlardan önce)
+    if (!pauseConfirmExit) {
+      // AŞAMA 1: Devam Et + Ana Menü
+      const bw = 200, bh = 52, bx = W / 2 - bw / 2;
+      const y1 = H / 2 - 6, y2 = (H / 2 - 6) + bh + 14;
+      ctx.fillStyle = '#2e7d32'; rrect(bx, y1, bw, bh, 12); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 20px -apple-system, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('▶ Devam Et', W / 2, y1 + bh / 2);
+      pauseResumeBtn = { x: bx, y: y1, w: bw, h: bh };
+      ctx.fillStyle = '#5d4037'; rrect(bx, y2, bw, bh, 12); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText('🏠 Ana Menü', W / 2, y2 + bh / 2);
+      pauseExitBtn = { x: bx, y: y2, w: bw, h: bh };
+      pauseYesBtn = null; pauseNoBtn = null;
+    } else {
+      // AŞAMA 2: onay
+      ctx.fillStyle = '#ffcdd2'; ctx.font = 'bold 16px -apple-system, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Çıkarsan skorun kaydedilmez!', W / 2, H / 2 - 40);
+      const bw = 200, bh = 52, bx = W / 2 - bw / 2;
+      const y1 = H / 2 + 0, y2 = (H / 2 + 0) + bh + 14;
+      ctx.fillStyle = '#c62828'; rrect(bx, y1, bw, bh, 12); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 20px -apple-system, sans-serif';
+      ctx.fillText('Evet, Çık', W / 2, y1 + bh / 2);
+      pauseYesBtn = { x: bx, y: y1, w: bw, h: bh };
+      ctx.fillStyle = '#455a64'; rrect(bx, y2, bw, bh, 12); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText('Vazgeç', W / 2, y2 + bh / 2);
+      pauseNoBtn = { x: bx, y: y2, w: bw, h: bh };
+      pauseResumeBtn = null; pauseExitBtn = null;
+    }
     drawMuteButton();
     drawPauseButton();
     requestAnimationFrame(loop);
