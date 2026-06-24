@@ -642,6 +642,10 @@ function drawMenu() {
   ctx.globalAlpha = 1;
 
   // Emoji karınca — Safari fix: -apple-system + explicit alphabetic baseline (+dikey offset)
+  // TEST: çizimden önce canvas state'i explicit sıfırlanıyor (miras görünmezlik ihtimaline karşı)
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#000';
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
   ctx.font = '52px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
