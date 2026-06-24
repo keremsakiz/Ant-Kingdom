@@ -1128,11 +1128,12 @@ function drawHUD() {
     rrect(bx, by, btnW, btnH, HUD.r.binaBtn); ctx.stroke();
     // Emoji üstte
     ctx.font = '19px sans-serif';
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#fff';
-    ctx.fillText(cfg.emoji, cx, by + 15);
+    ctx.fillText(cfg.emoji, cx, by + 22);
     // İsim ortada — tam sığsın diye fontu küçülterek dene (çirkin "…" kesme olmasın)
     const lbl = fitLabel(cfg.name, btnW - 6); // fitLabel ctx.font'u kurar
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = afford ? HUD.affordText2 : '#caa080';
     ctx.fillText(lbl.text, cx, by + 33);
     // Fiyat altta
@@ -2140,9 +2141,7 @@ function drawRadialMenu() {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle    = '#fff';
-    const em = ctx.measureText(cfg.emoji);
-    const emY = iy + (em.actualBoundingBoxAscent - em.actualBoundingBoxDescent) / 2;
-    ctx.fillText(cfg.emoji, ix, emY);
+    ctx.fillText(cfg.emoji, ix, iy + 2);
 
     // Etiket: limit dolu → "DOLU", yuva-çevresi değil → "YUVA", yoksa fiyat.
     ctx.font         = 'bold 10px ' + HUD.font;
