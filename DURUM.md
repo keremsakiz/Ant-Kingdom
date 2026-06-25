@@ -12,7 +12,7 @@
 - HTML5 Canvas, **TEK dosya** (`index.html`, ~2613 satır), **vanilla JS**, harici bağımlılık **YOK**.
 - GitHub: `keremsakiz/Ant-Kingdom` · Canlı: `keremsakiz.github.io/Ant-Kingdom/`
 - Hedef: App Store (Capacitor), **dokunmatik öncelik**, 390×844 baz çözünürlük.
-- Branch: `claude/gifted-planck-JSihd` · Repo: `C:\Users\Onur\Ant-Kingdom`
+- Branch: çalışma `claude/gifted-planck-JSihd` üzerinde; `main` ile senkron, faz tamamlanınca merge ediliyor. · Repo: `C:\Users\Onur\Ant-Kingdom`
 - Grid 15×15, tile 64×32 (izometrik). Yuva merkezde (NEST_COL/ROW = 7,7).
 
 ---
@@ -346,10 +346,9 @@ sonrası top skor listesi kalıcı). `saveScore`/`getTopScores`/`getBest` + `dra
   depth-sort `wy+uid` flicker fix, baked gölge) korundu. **Tek doğruluk kaynağı** — ileride render
   değişikliği tek yerde. Doğrulama: braces 579/579 dengeli (node yok, tarayıcı görsel testi önerilir).
 
-### Faz 4 — Ses Genişletme + Game Over Polish (TAMAMLANDI, bu oturum — MERGE BEKLİYOR)
+### Faz 4 — Ses Genişletme + Game Over Polish (TAMAMLANDI, main'e merge edildi)
 
-> **Bu oturumun commitleri main'e MERGE EDİLMEDİ.** Branch'te (`claude/gifted-planck-JSihd`)
-> commitli, ayrı bir adımda topluca merge + push edilecek.
+> **Not:** Bu commitler main'e çoktan merge edildi (eski "merge bekliyor" durumu geçti).
 
 **Ses P1 — yeni SFX (`1fc0471`):** mevcut `beep()` + `snd*` kalıbına 3 helper (master bus YOK,
 `actx.destination` kalır):
@@ -385,7 +384,7 @@ dayandın...", ≤9 "Güçlü bir savunmaydı!", 10+ "Efsanevi bir koloni! Rekor
   Veri akışı doğru; "wave 8'de wave-1 mesajı" gözlemi koddan üretilemiyor → muhtemelen tarayıcı cache
   (sert yenileme önerildi).
 
-### Faz 4 — HUD Cila (TAMAMLANDI, bu oturum — MERGE BEKLİYOR) ✅ FAZ 4'ÜN SON PARÇASI
+### Faz 4 — HUD Cila (TAMAMLANDI, main'e merge edildi) ✅ FAZ 4'ÜN SON PARÇASI
 
 > Faz 4'ün tek kalan parçasıydı; bittiğinde **Faz 4 TAM KAPANDI**. Beş alt parça, hepsi koddan
 > doğrulandı. Ortak tasarım dili: afford/non-afford netliği + drop shadow derinliği + ince altın
@@ -512,32 +511,53 @@ Mobilde oyundan menüye dönüş yolu yoktu (Escape sadece masaüstü + test-onl
 > `antKingdomBest`). GitHub Pages, `127.0.0.1` ve yerel IP (telefon testi) **ayrı skor kutuları**
 > tutar — aynı skor listesi beklenmemeli.
 
+### Faz 5 ÖNCESİ — Küçük İzole Ön İşler (✓ TAMAMLANDI, bu oturum)
+
+Faz 5 (karınca HP) büyük workstream'ine başlamadan önce yapılan üç bağımsız, düşük-riskli
+denge/görsel iyileştirme. Hepsi koddan doğrulandı:
+
+1. **Feromon izi görsel inceltme (`4d86ec7`):** `drawPheromone` içinde tek satır —
+   `ctx.fillStyle = 'rgba(120,200,110,' + Math.min(v/60, 0.35) * 0.25 + ')'` (max alpha
+   0.35 → 0.0875, çok daha soluk). **Mekanik AYNEN korundu:** `addP` (deposit), `senseP`
+   (yön bulma), `fillRect` ve **decay satırları** (`PH.grid[i] *= DECAY`) hiç değişmedi —
+   sadece çizim alpha çarpanı. Pathfinding bozulmadı.
+
+2. **Düşman hızı erken dalgalarda yavaş (`7906c02`):** `Enemy.init`'teki İKİ `this.speed`
+   ataması (boss + normal dal) → `this.speed = cfg.speed * Math.min(0.5 + (wave-1)*0.125, 1.0)`.
+   Dalga 1 ×0.5 → her dalga +0.125 → **dalga 5'te ×1.0** (tavan, orada kalır). İlk dalgalarda
+   oyuncuya kurulum zamanı tanır. `step()` hareket satırları / `slowMul` / `dts` / mini spider
+   override (`m.speed = 2.0`) dokunulmadı.
+
+3. **Zehir kulesi AOE halkası belirginleştirildi (`bc2289c`):** `drawBuildPulses`'a **geriye
+   uyumlu opsiyonel** `p.a` (alpha) + `p.w` (lineWidth) alanları eklendi (`p.a || 0.75`,
+   `p.w || 2.5`). Tower ateş push'u tek silik halka yerine **çift dalga** (life 1.0 + 0.7,
+   mor `#b060ff`/`#d090ff`, w 5/3, a 1.0/0.9). **Diğer hiçbir pulse ETKİLENMEDİ** — yeşil
+   yerleştirme / kırmızı yıkım / şifa / boss AOE / ladybug heal push'ları `a`/`w` taşımadığı
+   için birebir eski davranış.
+
 ---
 
 ## 3. SON COMMIT'LER
 
 ```
-(bu docs commit'inin kendisi HEAD olacak — git log ile en günceli doğrula)
-eeaad44 Faz4 HUD cila P3b: upgrade + yuva menu cila
-4a89145 Faz4 HUD cila P3a: radyal menu fiyat + ikon derinligi
-0580929 Faz4 HUD cila P2b fix: yetmeyen fiyat tam opak kirmizi
-2c102ec Faz4 HUD cila P2b: alt bina paneli afford netligi + derinlik
-7660fcc Faz4 HUD cila P2a ayar: pill altin ic cizgi belirginlestir
-1daa5ee Faz4 HUD cila P2a: pill gorsel yenileme + r.* isim duzeltme
-780b4bf Faz4 HUD cila P1: merkezi HUD tema sabiti (refactor, gorsel ayni)
-2e129b5 docs: DURUM.md Faz4 ses + gameover polish tamamlandi, HUD cila sirada
-df02f88 Faz4: gameover dinamik tesvik mesaji (dalgaya gore)
-c6a6a6f Fix: gameover basligi 'Sure Doldu' -> 'Yuva Dustu' (queen olumu)
-2d30d08 Faz4 ses P2: queen hasar (throttle) + game over sesi
-cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
-1fc0471 Faz4 ses P1: kule atesi + dalga + boss spawn sesleri
-004d075 Faz4 Pause/Resume: PAUSED state, karartma + DURAKLADI, oyun ici tus
+(git log --oneline ile en günceli doğrula — bu docs commit'i HEAD olur)
+697eb21 Revert: yuva yipranma lekesi kaldirildi (ileride izole faz)
+5e428eb Visual: yuva yipranma lekesi efekti (multiply radyal golge)   ← kaldirildi
+126bf3d Revert: yuva catlak efekti kaldirildi (dogal durmadi)
+30fa174 / ffcd2a6 / 3ca4edb Visual: yuva catlak efekti denemeleri        ← kaldirildi
+bc2289c Visual: zehir kulesi AOE halkasi belirginlestirildi (cift dalga)
+7906c02 Balance: dusman hizi erken dalgalarda yavas (dalga 5'te normal)
+4d86ec7 Visual: feromon izi gorsel olarak inceltildi (alpha x0.25)
+da7ce27 docs: 3 Safari bug + PAUSED Ana Menuye Don; sirada Faz 5
+b7f523f Feat: PAUSED ekranina Ana Menuye Don (iki asamali onay)
+4ccc428 Fix: menu emoji gorunurluk (Safari fillStyle state reset)
+af81cfd Fix: 3 Safari render bug (menu emoji + title glow + HUD pill)
 ```
-> **Branch durumu:** Branch `claude/gifted-planck-JSihd`. **Bu oturumun TÜM Faz 4 commitleri
-> (`1fc0471` → `eeaad44`: ses genişletme + game over polish + HUD cila P1→P3b) main'e
-> HENÜZ MERGE EDİLMEDİ — branch'te commitli, ayrı bir adımda topluca merge + push edilecek.
-> Merge sonrası bu not güncellenecek.** Öncesi (mute + pause/resume `9d2db6d`'ye kadar) merge +
-> push durumu için `git status -sb` ile doğrula.
+> **Branch durumu:** Çalışma `claude/gifted-planck-JSihd` üzerinde; `main` ile senkron,
+> her faz tamamlanınca main'e merge ediliyor. **Faz 4'ün tüm commitleri (`1fc0471` → `eeaad44`:
+> ses + game over polish + HUD cila) ÇOKTAN main'de** — eski "merge bekliyor" notları geçersiz.
+> Bu oturumun Faz 5-öncesi ön işleri (feromon incelt + düşman hız + zehir halka, `4d86ec7` →
+> `bc2289c`) branch'te commitli. En güncel durum için `git log --oneline -8` + `git status -sb`.
 
 ---
 
@@ -564,7 +584,7 @@ cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
      topunun karınca hedeflemesi) HÂLÂ ertelenmiş — karınca hp/ölüm mekaniğiyle,
      karınca AI workstream'iyle birlikte gelecek.
 
-3. ~~**Faz 4**~~ — **✓ TAM KAPANDI (bu oturum)** — tüm parçalar bitti, MERGE BEKLİYOR:
+3. ~~**Faz 4**~~ — **✓ TAM KAPANDI** — tüm parçalar bitti, **main'e merge edildi**:
    - ~~**Ana menü cila**~~ — **✓ TAMAMLANDI** (bkz. Bölüm 2 "Faz 4 — Ana Menü Cila P1": skor kartı +
      dikey denge + dekor karınca arka katman) ve lejant dürüstlük güncellemesi.
    - ~~**Power-up sistemi**~~ — **✓ TAMAMLANDI** (YENİ, bkz. Bölüm 2 "Faz 4 — Power-up Sistemi":
@@ -577,8 +597,8 @@ cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
      menü). Afford netliği (yetmeyen fiyat tam opak kırmızı) + drop shadow derinliği + ince altın
      çizgi + queen HP < %30 kırmızı uyarı.
    - **localStorage skor** — DÜŞÜLDÜ (zaten tam implement + test edildi).
-   - **➡️ Faz 4 artık tamamen bitti.** Tüm Faz 4 commitleri (`1fc0471` → `eeaad44`) topluca
-     main'e merge edilecek (ayrı adım, Kerem yönlendirecek).
+   - **➡️ Faz 4 artık tamamen bitti.** Tüm Faz 4 commitleri (`1fc0471` → `eeaad44`) main'e
+     merge edildi.
 
 4. **Kerem talebi — ✓ TAMAMLANDI (A + B, bu oturum):** bkz. Bölüm 2 "Faz 4 — Boss Reward +
    Şifa Alan Etkisi". A: dalga-ölçekli boss yem ödülü + "+N 🍖" float (yerine geçer).
@@ -638,9 +658,20 @@ cc31760 Faz4 ses P1 ayar: yem throttle 400->600ms
 > - 🛡 Kalkan power-up'ı (şu an sadece görsel; koruyacak hp olmadığı için decrement loop EKLENMEDİ —
 >   bkz. Bölüm 2 "🛡 Kalkan bilinçle ATLANDI" notu) → hp gelince implement + lejanta geri eklenir.
 >
-> **Not:** Faz 5'e başlamadan önce Faz 4 commitlerinin main'e merge edilmesi beklenir (Kerem yönlendirecek).
+> **Not:** Faz 4 commitleri main'e ÇOKTAN merge edildi. Faz 5 büyük ve izole bir workstream
+> olduğu için **temiz (fresh) bir oturumla** başlanması önerilir.
 
 ### Ertelenen / Notlar
+- **Yuva hasar görsel göstergesi — ERTELENDİ (kendi izole fazına).** Höyükte HP'ye bağlı hasar
+  görseli (eşikler **100/75/50/25**) hedefleniyor. Bu oturumda iki yöntem denendi ve **beğenilmedi
+  / kaldırıldı**: (1) çizgi-tabanlı çatlaklar (çift katman gölge+hat, dallanma, yumuşak eğri —
+  `3ca4edb`/`ffcd2a6`/`30fa174`, revert `126bf3d`); (2) multiply blend radyal yıpranma lekeleri
+  (`5e428eb`, revert `697eb21`). İkisi de **izometrik höyük yüzeyine oturmadı**. İleride KENDİ izole
+  fazında, sıfırdan daha iyi bir yöntemle yapılacak. **Veri hazır:** yuva canı = kraliçe canı,
+  oran = `hudQueenHP / CONFIG.QUEEN.MAX_HP`; `drawNestEntrance` scope'unda globaller doğrudan
+  erişilebilir, HP azalma mantığına (satır 2298/2939/3045) dokunmaya gerek yok (salt görsel).
+- **Atış kulesi (ranger) 360° dönüp en yakın düşmana bakması — ERTELENDİ.** Kule namlusunun
+  hedefe dönmesi **sprite overhaul workstream'ine** ait; o zaman yapılacak.
 - **SFX master bus YOK — bilinçli.** Tüm SFX `beep()` ile doğrudan `actx.destination`'a bağlanır
   (müzik ayrı `musicGain` bus'ında). Master gain / filtre / ducking **eklenmedi** — **tutorial/intro
   (Kraliçe anlatım) workstream'ine ertelendi** (anlatım sırasında SFX'i kısmak için ducking orada gerekecek).
