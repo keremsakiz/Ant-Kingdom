@@ -943,6 +943,46 @@ function drawNestEntrance(x, y, hw, hh, s) {
   ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 2 * s;
   ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI); ctx.stroke();
 
+  // --- HP'ye bağlı yıpranma lekeleri (yumuşak gölge, çizgi değil) ---
+  const hpRatio = hudQueenHP / CONFIG.QUEEN.MAX_HP;
+  if (hpRatio < 0.75) {
+    // Deterministik leke listesi: [açı(rad), mesafe(0..1), boyut(0..1)]
+    // Höyük merkezinden radyal dağılmış; kenarlara kadar ulaşır.
+    const SPOTS = [
+      [-2.4, 0.62, 1.0], [ 0.5, 0.70, 0.9], [ 2.1, 0.55, 0.85],
+      [ 1.2, 0.78, 0.75], [-1.0, 0.50, 0.95], [-0.3, 0.82, 0.7],
+      [ 2.8, 0.74, 0.8], [-2.0, 0.34, 0.85], [ 0.9, 0.40, 0.7],
+      [ 1.9, 0.86, 0.65], [-1.5, 0.80, 0.7], [ 0.1, 0.30, 0.9],
+    ];
+    // Kaç leke gösterilecek: HP düştükçe artar
+    const count = hpRatio < 0.25 ? SPOTS.length
+                : hpRatio < 0.5  ? 8
+                : 4;
+    // Genel koyuluk: HP düştükçe artar
+    const intensity = hpRatio < 0.25 ? 0.5 : hpRatio < 0.5 ? 0.36 : 0.24;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply'; // yüzeyi karart, üstüne boyama değil
+    for (let i = 0; i < count; i++) {
+      const [ang, dist, sz] = SPOTS[i];
+      // höyük elips alanına oturt (yatay geniş, dikey basık + yukarı kaydır)
+      const px = x + Math.cos(ang) * dist * hw * 0.9;
+      const py = y - hh * 0.12 + Math.sin(ang) * dist * hh * 0.78;
+      const rad = sz * hw * 0.34;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
+      const core = hpRatio < 0.25 ? '90,40,22' : '74,48,26'; // kritikte kızılımsı
+      g.addColorStop(0,   'rgba(' + core + ',' + intensity + ')');
+      g.addColorStop(0.6, 'rgba(' + core + ',' + (intensity * 0.45) + ')');
+      g.addColorStop(1,   'rgba(' + core + ',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(px, py, rad, rad * 0.82, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  // --- yıpranma lekeleri sonu ---
+
   // ── Giriş ("ağız"): höyüğün tepe-ortasına, hafif yukarı + küçültülmüş ──
   const ey = y - H * 0.45; // tepe-orta hizası
   // Outer ring
