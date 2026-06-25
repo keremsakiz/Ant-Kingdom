@@ -2783,7 +2783,7 @@ function drawPheromone() {
         const wx = WORLD.minX + cx * PCELL, wy = WORLD.minY + cy * PCELL;
         const s = screenFromWorld(wx, wy);
         if (s.x + cell < 0 || s.x > W || s.y + cell < 0 || s.y > H) { PH.grid[i] *= CONFIG.PHEROMONE.DECAY; continue; }
-        ctx.fillStyle = 'rgba(120,200,110,' + Math.min(v / 60, 0.35) + ')';
+        ctx.fillStyle = 'rgba(120,200,110,' + Math.min(v / 60, 0.35) * 0.25 + ')';
         ctx.fillRect(s.x, s.y, cell + 1, cell + 1);
         PH.grid[i] *= CONFIG.PHEROMONE.DECAY;
       } else PH.grid[i] = 0;
