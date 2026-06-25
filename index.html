@@ -1720,7 +1720,10 @@ class Building {
           if (e.hp <= 0) killEnemy(e);
         }
         // Görsel: zehir atışında tower çevresinde mor AOE halkası (range'e ölçekli)
-        if (hit) buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#a050ff', maxR: cfg.range });
+        if (hit) {
+          buildPulses.push({ wx: w.x, wy: w.y, life: 1.0, c: '#b060ff', maxR: cfg.range, w: 5, a: 1.0 });
+          buildPulses.push({ wx: w.x, wy: w.y, life: 0.7, c: '#d090ff', maxR: cfg.range, w: 3, a: 0.9 });
+        }
       }
     } else if (this.type === 'alarm') {
       // ŞİFA TAŞI: yuvaya healRange içindeyse periyodik olarak kraliçe HP'sini
@@ -2224,9 +2227,9 @@ function drawBuildPulses(dts) {
     // maxR/c verilmezse eski yerleştirme dalgası davranışı (yeşil, 40px)
     const r = (1 - p.life) * (p.maxR || 40) * camera.scale;
     ctx.save();
-    ctx.globalAlpha = p.life * 0.75;
+    ctx.globalAlpha = p.life * (p.a || 0.75);
     ctx.strokeStyle = p.c || '#7fff5a';
-    ctx.lineWidth   = 2.5;
+    ctx.lineWidth   = p.w || 2.5;
     ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, r), 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
