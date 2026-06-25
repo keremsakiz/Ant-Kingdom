@@ -978,27 +978,33 @@ function drawNestEntrance(x, y, hw, hh, s) {
     };
 
     ctx.save();
-    const a1 = hpRatio < 0.25 ? 0.9 : (hpRatio < 0.5 ? 0.72 : 0.5);
+      const a1 = hpRatio < 0.25 ? 0.9 : (hpRatio < 0.5 ? 0.72 : 0.5);
 
-    // Ana çatlak (her zaman, <0.75) — dallanan, incelen
-    drawCrack([[-0.08,-0.52],[-0.02,-0.34],[-0.11,-0.16],[-0.05,0.04],[-0.12,0.22]], 1.7, a1);
-    // ana çatlaktan küçük yan kol
-    drawCrack([[-0.05,0.04],[0.04,0.10],[0.10,0.20]], 1.0, a1*0.8);
+      // <0.75 — SOL taraftan tabana inen ana çatlak + kol
+      drawCrack([[-0.14,-0.50],[-0.20,-0.28],[-0.12,-0.06],[-0.18,0.16],[-0.10,0.34]], 1.7, a1);
+      drawCrack([[-0.12,-0.06],[-0.02,0.02],[0.05,0.14]], 1.0, a1*0.8);
 
-    if (hpRatio < 0.5) {
-      // İkinci çatlak (sağ üst), kendi dalı
-      drawCrack([[0.18,-0.40],[0.10,-0.20],[0.16,-0.02],[0.09,0.16]], 1.5, a1);
-      drawCrack([[0.16,-0.02],[0.24,0.04]], 0.9, a1*0.75);
-    }
-    if (hpRatio < 0.25) {
-      // Üçüncü çatlak + içe gömülü kızıl (yumuşak, abartısız)
-      drawCrack([[0.02,-0.48],[0.07,-0.26],[-0.01,-0.04],[0.05,0.14]], 1.6, a1);
-      ctx.globalAlpha = 0.12;
-      ctx.fillStyle = '#7a1c0c';
-      ctx.beginPath();
-      ctx.ellipse(x, y - hh*0.12, hw*0.38, hh*0.34, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
+      if (hpRatio < 0.5) {
+        // SAĞ taraf, ayrı bölge — tabana doğru
+        drawCrack([[0.16,-0.46],[0.22,-0.24],[0.13,-0.02],[0.20,0.18],[0.12,0.36]], 1.6, a1);
+        drawCrack([[0.13,-0.02],[0.04,0.04],[-0.03,0.16]], 0.95, a1*0.75);
+        // ÜST-orta kısa çatlak (girişin yanından)
+        drawCrack([[-0.02,-0.56],[0.03,-0.40],[-0.03,-0.26]], 1.2, a1*0.85);
+      }
+      if (hpRatio < 0.25) {
+        // MERKEZ dikey + SAĞ-ALT köşeye yayılan
+        drawCrack([[0.02,-0.30],[-0.04,-0.10],[0.04,0.12],[-0.02,0.34]], 1.5, a1);
+        // SOL-ALT kenara yayılan
+        drawCrack([[-0.20,0.04],[-0.28,0.18],[-0.22,0.34]], 1.3, a1*0.9);
+        // SAĞ-ÜST kenara yayılan
+        drawCrack([[0.24,-0.30],[0.32,-0.14],[0.26,0.02]], 1.2, a1*0.85);
+        // içe gömülü kızıl (yumuşak)
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#7a1c0c';
+        ctx.beginPath();
+        ctx.ellipse(x, y - hh*0.10, hw*0.42, hh*0.40, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
     ctx.restore();
   }
   // --- çatlak overlay sonu ---
