@@ -943,45 +943,60 @@ function drawNestEntrance(x, y, hw, hh, s) {
   ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 2 * s;
   ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI); ctx.stroke();
 
-  // --- HP'ye bağlı çatlak overlay (sadece görsel) ---
+  // --- HP'ye bağlı çatlak overlay (doğal, çift katman) ---
   const hpRatio = hudQueenHP / CONFIG.QUEEN.MAX_HP;
   if (hpRatio < 0.75) {
-    const cx = x, baseY = y;            // höyük merkez referansı
-    const crackColor = hpRatio < 0.25 ? '#3a1208' : '#2a1a0d';
-    const crackAlpha = hpRatio < 0.25 ? 0.95 : (hpRatio < 0.5 ? 0.8 : 0.55);
-    const crackW = Math.max(1, (hpRatio < 0.25 ? 2.6 : hpRatio < 0.5 ? 2.0 : 1.4) * s);
-    ctx.save();
-    ctx.globalAlpha = crackAlpha;
-    ctx.strokeStyle = crackColor;
-    ctx.lineWidth = crackW;
-    ctx.lineCap = 'round';
-    // Çatlak 1 (her zaman, <0.75)
-    ctx.beginPath();
-    ctx.moveTo(cx - hw*0.10, baseY - hh*0.55);
-    ctx.lineTo(cx - hw*0.04, baseY - hh*0.30);
-    ctx.lineTo(cx - hw*0.14, baseY - hh*0.05);
-    ctx.lineTo(cx - hw*0.06, baseY + hh*0.18);
-    ctx.stroke();
-    if (hpRatio < 0.5) {
-      // Çatlak 2 (<0.5)
+    // bir çatlağı çiz: önce koyu derinlik gölgesi, üstüne ince hat;
+    // pts = [[dx,dy],...] höyük merkezine göreli (hw/hh ölçekli)
+    const drawCrack = (pts, mainW, alpha) => {
+      const P = pts.map(p => [x + p[0]*hw, y + p[1]*hh]);
+      // katman 1: koyu gölge (hafif offset, daha kalın, yumuşak)
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.strokeStyle = '#1a0f06';
+      ctx.lineWidth = (mainW + 1.6) * s;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(cx + hw*0.16, baseY - hh*0.40);
-      ctx.lineTo(cx + hw*0.08, baseY - hh*0.12);
-      ctx.lineTo(cx + hw*0.18, baseY + hh*0.10);
+      ctx.moveTo(P[0][0]+1, P[0][1]+1);
+      for (let i=1;i<P.length;i++){
+        const mx=(P[i-1][0]+P[i][0])/2+1, my=(P[i-1][1]+P[i][1])/2+1;
+        ctx.quadraticCurveTo(P[i-1][0]+1,P[i-1][1]+1,mx,my);
+      }
+      ctx.lineTo(P[P.length-1][0]+1,P[P.length-1][1]+1);
       ctx.stroke();
+      // katman 2: çatlak hattı (ince, koyu kahve), yumuşak eğri
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = '#2e1c0e';
+      ctx.lineWidth = mainW * s;
+      ctx.beginPath();
+      ctx.moveTo(P[0][0], P[0][1]);
+      for (let i=1;i<P.length;i++){
+        const mx=(P[i-1][0]+P[i][0])/2, my=(P[i-1][1]+P[i][1])/2;
+        ctx.quadraticCurveTo(P[i-1][0],P[i-1][1],mx,my);
+      }
+      ctx.lineTo(P[P.length-1][0],P[P.length-1][1]);
+      ctx.stroke();
+    };
+
+    ctx.save();
+    const a1 = hpRatio < 0.25 ? 0.9 : (hpRatio < 0.5 ? 0.72 : 0.5);
+
+    // Ana çatlak (her zaman, <0.75) — dallanan, incelen
+    drawCrack([[-0.08,-0.52],[-0.02,-0.34],[-0.11,-0.16],[-0.05,0.04],[-0.12,0.22]], 1.7, a1);
+    // ana çatlaktan küçük yan kol
+    drawCrack([[-0.05,0.04],[0.04,0.10],[0.10,0.20]], 1.0, a1*0.8);
+
+    if (hpRatio < 0.5) {
+      // İkinci çatlak (sağ üst), kendi dalı
+      drawCrack([[0.18,-0.40],[0.10,-0.20],[0.16,-0.02],[0.09,0.16]], 1.5, a1);
+      drawCrack([[0.16,-0.02],[0.24,0.04]], 0.9, a1*0.75);
     }
     if (hpRatio < 0.25) {
-      // Çatlak 3 + kritik kızıl ton (<0.25)
+      // Üçüncü çatlak + içe gömülü kızıl (yumuşak, abartısız)
+      drawCrack([[0.02,-0.48],[0.07,-0.26],[-0.01,-0.04],[0.05,0.14]], 1.6, a1);
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = '#7a1c0c';
       ctx.beginPath();
-      ctx.moveTo(cx + hw*0.02, baseY - hh*0.50);
-      ctx.lineTo(cx + hw*0.06, baseY - hh*0.20);
-      ctx.lineTo(cx - hw*0.02, baseY + hh*0.05);
-      ctx.stroke();
-      // hafif kızıl hasar parıltısı
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = '#c0301a';
-      ctx.beginPath();
-      ctx.ellipse(cx, baseY - hh*0.15, hw*0.45, hh*0.40, 0, 0, Math.PI*2);
+      ctx.ellipse(x, y - hh*0.12, hw*0.38, hh*0.34, 0, 0, Math.PI*2);
       ctx.fill();
     }
     ctx.restore();
