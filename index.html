@@ -2894,10 +2894,10 @@ class Enemy {
       this.maxHp    = cfg.hp * hpScale * 6;
       this.queenDmg = cfg.queenDmg * 2;
       this.reward   = cfg.reward * 5;
-      this.speed    = cfg.speed;
+      this.speed    = cfg.speed * Math.min(0.5 + (wave - 1) * 0.125, 1.0);
     } else {
       this.maxHp    = cfg.hp * hpScale;
-      this.speed    = cfg.speed;
+      this.speed    = cfg.speed * Math.min(0.5 + (wave - 1) * 0.125, 1.0);
       this.queenDmg = cfg.queenDmg;
       this.reward   = cfg.reward;
     }
