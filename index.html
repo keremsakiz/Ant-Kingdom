@@ -1777,7 +1777,7 @@ class Building {
       if (best) {
         this.aimAngle = Math.atan2(best.wy - w.y, best.wx - w.x);
       } else {
-        this.aimAngle = (this.aimAngle || 0) + dt * 0.3; // yavaş idle dönüş
+        this.aimAngle = this.aimAngle || 0; // hedef yok: son açıda sabit kal
       }
       // Ateşleme yine cooldown'a bağlı.
       this.shootTimer += dt;
