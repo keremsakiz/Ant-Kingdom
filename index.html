@@ -1906,7 +1906,7 @@ class Building {
         if (a2 !== undefined && a2 !== null) {
           const archSc = 0.85 * s * tier.scale;       // 1.25 -> 0.85 kucuk
           // okcunun oturma noktasi (kule ust-merkez), nefes ofseti PNG ile ayni faz
-          const ax = x, ay = cy - drawH * 0.37;        // platform ust-orta zemine otur
+          const ax = x, ay = cy - drawH * 0.35;        // platform ust-orta zemine otur
           const recoilN = this.recoilT > 0 ? (this.recoilT / 0.18) : 0;
           drawTowerArcher(ax, ay, a2, archSc, recoilN, breath);
         }
