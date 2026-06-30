@@ -222,6 +222,23 @@ function getWarnGradient() {
 // Font boyutu tam sayı px'e yuvarlandığından (max 14..~40) ve 5 bina emojisi
 // olduğundan önbellek küçük ve sınırlı kalır; zoom değişince yeni boyut üretilir.
 const _emojiCache = new Map();
+
+// --- Harici PNG sprite yükleyici (assets/) ---
+const _imgCache = {};
+function loadSprite(path) {
+  if (_imgCache[path]) return _imgCache[path];
+  const img = new Image();
+  img.decoding = 'async';
+  const rec = { img, ready: false };
+  img.onload = () => { rec.ready = true; };
+  img.onerror = () => { console.warn('Sprite yuklenemedi:', path); };
+  img.src = path;
+  _imgCache[path] = rec;
+  return rec;
+}
+// Ranger sprite'ini oyun acilirken yuklemeye basla (pop'u onler)
+const RANGER_SPR = loadSprite('assets/ranger.png');
+
 function getEmojiSprite(emoji, fontPx) {
   const key = emoji + '|' + fontPx;
   let spr = _emojiCache.get(key);
@@ -1863,67 +1880,28 @@ class Building {
     // Sprite merkezli pişti → sol-üst köşeyi yarım (ölçekli) sprite kadar kaydır.
     const sz = spr.size * tier.scale;
     if (this.type === 'ranger') {
-      // --- RANGER: elle çizim (emoji yok) ---
-      const a = this.aimAngle || 0;
-      const rs = 11 * s; // temel boyut
-      // 1) İzometrik taş kaide (eşkenar dörtgen)
-      ctx.save();
-      ctx.fillStyle = '#6b7280';
-      ctx.strokeStyle = '#374151';
-      ctx.lineWidth = Math.max(1, 1.5 * s);
-      ctx.beginPath();
-      ctx.moveTo(x, cy + rs * 0.55);
-      ctx.lineTo(x + rs, cy + rs * 0.05);
-      ctx.lineTo(x, cy - rs * 0.45);
-      ctx.lineTo(x - rs, cy + rs * 0.05);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      // kaide üst yüzeyi (açık ton)
-      ctx.fillStyle = '#9ca3af';
-      ctx.beginPath();
-      ctx.moveTo(x, cy - rs * 0.45);
-      ctx.lineTo(x + rs * 0.6, cy - rs * 0.20);
-      ctx.lineTo(x, cy + rs * 0.05);
-      ctx.lineTo(x - rs * 0.6, cy - rs * 0.20);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-
-      // 2) Dönen yay + ok (en yakın düşmana bakar)
-      ctx.save();
-      ctx.translate(x, cy - rs * 0.25);
-      ctx.rotate(a);
-      // yay gövdesi (kavis)
-      ctx.strokeStyle = '#8b5a2b';
-      ctx.lineWidth = Math.max(1.5, 2.2 * s);
-      ctx.beginPath();
-      ctx.arc(0, 0, rs * 0.7, -Math.PI * 0.55, Math.PI * 0.55);
-      ctx.stroke();
-      // yay ipi
-      ctx.strokeStyle = 'rgba(230,230,230,0.85)';
-      ctx.lineWidth = Math.max(0.8, 1 * s);
-      const bx = Math.cos(Math.PI * 0.55) * rs * 0.7;
-      const by = Math.sin(Math.PI * 0.55) * rs * 0.7;
-      ctx.beginPath();
-      ctx.moveTo(bx, -by);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-      // ok (öne doğru)
-      ctx.strokeStyle = '#e8b04a';
-      ctx.lineWidth = Math.max(1.2, 1.6 * s);
-      ctx.beginPath();
-      ctx.moveTo(bx, 0);
-      ctx.lineTo(rs * 1.15, 0);
-      ctx.stroke();
-      // ok ucu
-      ctx.fillStyle = '#ffd24a';
-      ctx.beginPath();
-      ctx.moveTo(rs * 1.15, 0);
-      ctx.lineTo(rs * 0.95, -rs * 0.18);
-      ctx.lineTo(rs * 0.95, rs * 0.18);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      // --- RANGER: PNG sprite (emoji yok) ---
+      if (RANGER_SPR.ready) {
+        const iw = RANGER_SPR.img.width, ih = RANGER_SPR.img.height;
+        const drawW = 46 * s * tier.scale;           // ekranda kule genisligi
+        const drawH = drawW * (ih / iw);             // en-boy korunur
+        // Taban hizasi: emoji merkezi cy idi; PNG'yi biraz yukari oturt ki kaide hucreye otursun.
+        ctx.drawImage(RANGER_SPR.img, x - drawW / 2, cy - drawH * 0.62, drawW, drawH);
+      } else {
+        // Henuz yuklenmediyse: eski yay/ok cizimine guvenli dusus
+        const a = this.aimAngle || 0;
+        const rs = 11 * s;
+        ctx.save();
+        ctx.translate(x, cy - rs * 0.25);
+        ctx.rotate(a);
+        ctx.strokeStyle = '#e8b04a';
+        ctx.lineWidth = Math.max(1.2, 1.6 * s);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(rs * 1.15, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
       // --- /RANGER ---
     } else {
       ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
