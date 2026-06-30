@@ -1906,7 +1906,7 @@ class Building {
         if (a2 !== undefined && a2 !== null) {
           const archSc = 0.85 * s * tier.scale;       // 1.25 -> 0.85 kucuk
           // okcunun oturma noktasi (kule ust-merkez), nefes ofseti PNG ile ayni faz
-          const ax = x, ay = cy - drawH * 0.26;        // platform ust-orta zemine otur
+          const ax = x, ay = cy - drawH * 0.33;        // platform ust-orta zemine otur
           const recoilN = this.recoilT > 0 ? (this.recoilT / 0.18) : 0;
           drawTowerArcher(ax, ay, a2, archSc, recoilN, breath);
         }
@@ -2739,7 +2739,7 @@ function drawAntFull(x, y, angle, wig, type, carrying, cam) {
 // Kule okcusu: yukaridan bakilan DIK okcu karinca (platformdan tasmaz).
 // cx,cy ekran noktasi, ang nisan acisi, sc olcek, recoil 0..1, breathe nefes ofseti
 function drawTowerArcher(cx, cy, ang, sc, recoil, breathe) {
-  const body = '#e8542a', dark = '#c23d18';
+  const body = '#8b1a1a', dark = '#5e0f0f';
   ctx.save();
   ctx.translate(cx, cy + breathe);
   ctx.scale(sc, sc);
@@ -2760,12 +2760,22 @@ function drawTowerArcher(cx, cy, ang, sc, recoil, breathe) {
   ctx.beginPath(); ctx.arc(0, -4.5, 2.8, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = dark;
   ctx.beginPath(); ctx.arc(0, -4.5, 1.5, 0, Math.PI * 2); ctx.fill();
-  // Antenler (yukari)
-  ctx.strokeStyle = dark; ctx.lineWidth = 0.9;
+  // Okcu kaski (kafanin ustune oturan metalik baslik)
+  ctx.fillStyle = '#9aa3ad';                       // metal gri
   ctx.beginPath();
-  ctx.moveTo(-1, -6); ctx.lineTo(-2.5, -8.5);
-  ctx.moveTo(1, -6);  ctx.lineTo(2.5, -8.5);
-  ctx.stroke();
+  ctx.arc(0, -4.8, 3.1, Math.PI, 0);               // kafayi orten yarim kubbe
+  ctx.fill();
+  ctx.fillStyle = '#c2cad3';                       // ust isik (parlaklik)
+  ctx.beginPath();
+  ctx.arc(0, -5.0, 3.1, Math.PI * 1.15, Math.PI * 1.6);
+  ctx.lineWidth = 1.2; ctx.strokeStyle = '#c2cad3'; ctx.stroke();
+  ctx.fillStyle = '#6b7280';                       // kask alt kenar bandi (koyu)
+  ctx.fillRect(-3.1, -4.9, 6.2, 1.1);
+  // tepe sivri ucu
+  ctx.fillStyle = '#7d8690';
+  ctx.beginPath();
+  ctx.moveTo(0, -8.6); ctx.lineTo(-0.9, -7.4); ctx.lineTo(0.9, -7.4);
+  ctx.closePath(); ctx.fill();
   // Gozler (tepeden, kafanin ust kenarinda)
   ctx.fillStyle = '#fff';
   ctx.beginPath();
@@ -2779,7 +2789,7 @@ function drawTowerArcher(cx, cy, ang, sc, recoil, breathe) {
   // KOLLAR + YAY: nisan yonune doner (govde sabit, sadece bu grup doner)
   ctx.save();
   ctx.rotate(ang);
-  const bowX = 5.5;
+  const bowX = 8;
   const pull = recoil * 2.0;
   // yay govdesi
   ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 1.2;
