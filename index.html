@@ -1688,6 +1688,8 @@ class Building {
     this.healTimer  = 0; // alarm (şifa taşı) periyodik iyileştirme
     this.shootTimer = 0; // ranger (atış kulesi) periyodik mermi
     this.aimAngle   = 0; // ranger namlu/yay açısı (en yakın düşmana bakar)
+    this.shakeT = 0;   // hasar sarsilma zamanlayici
+    this.recoilT = 0;  // atis geri tepme zamanlayici
   }
   /** Seviyeye göre maxHP'yi yeniden hesapla ve canı doldur (kurulunca/yükselince). */
   applyLevel() {
@@ -1704,6 +1706,9 @@ class Building {
    */
   update(dt) {
     const cfg = CONFIG.BUILDINGS[this.type];
+
+    if (this.recoilT > 0) this.recoilT = Math.max(0, this.recoilT - dt);
+    if (this.shakeT  > 0) this.shakeT  = Math.max(0, this.shakeT  - dt);
 
     const eff = this.effectMul();
     if (this.type === 'barracks') {
@@ -1811,6 +1816,7 @@ class Building {
             lvl: this.level
           });
           sndShoot();
+          this.recoilT = 0.18;  // atis aninda geri tepme baslat
         }
       }
     } else if (this.type === 'catapult') {
@@ -1883,36 +1889,50 @@ class Building {
       // --- RANGER: PNG sprite (emoji yok) ---
       if (RANGER_SPR.ready) {
         const iw = RANGER_SPR.img.width, ih = RANGER_SPR.img.height;
-        const drawW = 52 * s * tier.scale;           // 46 -> 52: biraz daha iri/okunur
+        const drawW = 52 * s * tier.scale;
         const drawH = drawW * (ih / iw);
-        // Canlandirma: hafif parlaklik + doygunluk (oyunun canli paletine uysun)
+        // NEFES: yavas yukari-asagi salinim (her kule farkli faz)
+        const t = performance.now() / 1000;
+        const breath = Math.sin(t * 1.6 + (this.gridX + this.gridY)) * 1.2 * s;
+        // HASAR SARSILMASI: kisa, hizli titreme
+        const shake = this.shakeT > 0 ? Math.sin(t * 60) * 2.5 * s * (this.shakeT / 0.2) : 0;
         ctx.save();
         ctx.filter = 'brightness(1.08) saturate(1.18)';
-        ctx.drawImage(RANGER_SPR.img, x - drawW / 2, cy - drawH * 0.62, drawW, drawH);
+        ctx.drawImage(RANGER_SPR.img, x - drawW / 2 + shake, cy - drawH * 0.62 + breath, drawW, drawH);
         ctx.restore();
 
-        // Sabit PNG ustune: en yakin dusmana donen kucuk ok gostergesi (canli his)
+        // DONEN OK + ATES GERI TEPME + PARLAMA
         const a = this.aimAngle;
         if (a !== undefined && a !== null) {
           const rs = 13 * s * tier.scale;
-          // okcunun durdugu nokta (kule ust-merkez civari)
-          const ox = x, oy = cy - drawH * 0.30;
+          const recoil = this.recoilT > 0 ? -rs * 0.35 * (this.recoilT / 0.18) : 0; // geri cekilme
+          const ox = x, oy = cy - drawH * 0.30 + breath;
           ctx.save();
           ctx.translate(ox, oy);
           ctx.rotate(a);
-          // ok govdesi
+          // atis parlamasi (ates ettigi an ok ucunda)
+          if (this.recoilT > 0) {
+            ctx.save();
+            ctx.globalAlpha = (this.recoilT / 0.18) * 0.7;
+            ctx.fillStyle = '#fff2b0';
+            ctx.beginPath();
+            ctx.arc(rs * 1.1, 0, rs * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+          // ok govdesi (recoil ile geri-ileri)
           ctx.strokeStyle = '#ffd24a';
           ctx.lineWidth = Math.max(1.4, 2 * s);
           ctx.beginPath();
-          ctx.moveTo(rs * 0.2, 0);
-          ctx.lineTo(rs * 1.0, 0);
+          ctx.moveTo(rs * 0.2 + recoil, 0);
+          ctx.lineTo(rs * 1.0 + recoil, 0);
           ctx.stroke();
           // ok ucu
           ctx.fillStyle = '#ffe07a';
           ctx.beginPath();
-          ctx.moveTo(rs * 1.0, 0);
-          ctx.lineTo(rs * 0.78, -rs * 0.16);
-          ctx.lineTo(rs * 0.78, rs * 0.16);
+          ctx.moveTo(rs * 1.0 + recoil, 0);
+          ctx.lineTo(rs * 0.78 + recoil, -rs * 0.16);
+          ctx.lineTo(rs * 0.78 + recoil, rs * 0.16);
           ctx.closePath();
           ctx.fill();
           ctx.restore();
