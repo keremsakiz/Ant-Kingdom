@@ -1899,7 +1899,7 @@ class Building {
         const shake = this.shakeT > 0 ? Math.sin(t * 60) * 2.5 * s * (this.shakeT / 0.2) : 0;
         ctx.save();
         ctx.filter = 'brightness(1.08) saturate(1.18)';
-        ctx.drawImage(RANGER_SPR.img, x - drawW / 2 + shake, cy - drawH * 0.62 + breath, drawW, drawH);
+        ctx.drawImage(RANGER_SPR.img, x - drawW / 2 + shake, cy - drawH * 0.62, drawW, drawH);
         ctx.restore();
 
         // Kule okcusu (oyunun karinca stilinde, donen + ates eden)
