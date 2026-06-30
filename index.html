@@ -1707,8 +1707,8 @@ class Building {
   update(dt) {
     const cfg = CONFIG.BUILDINGS[this.type];
 
-    if (this.recoilT > 0) this.recoilT = Math.max(0, this.recoilT - dt);
-    if (this.shakeT  > 0) this.shakeT  = Math.max(0, this.shakeT  - dt);
+    if (this.recoilT > 0) this.recoilT = Math.max(0, this.recoilT - dt / 1000);
+    if (this.shakeT  > 0) this.shakeT  = Math.max(0, this.shakeT  - dt / 1000);
 
     const eff = this.effectMul();
     if (this.type === 'barracks') {
