@@ -1901,41 +1901,14 @@ class Building {
         ctx.drawImage(RANGER_SPR.img, x - drawW / 2 + shake, cy - drawH * 0.62 + breath, drawW, drawH);
         ctx.restore();
 
-        // DONEN OK + ATES GERI TEPME + PARLAMA
-        const a = this.aimAngle;
-        if (a !== undefined && a !== null) {
-          const rs = 13 * s * tier.scale;
-          const recoil = this.recoilT > 0 ? -rs * 0.35 * (this.recoilT / 0.18) : 0; // geri cekilme
-          const ox = x, oy = cy - drawH * 0.30 + breath;
-          ctx.save();
-          ctx.translate(ox, oy);
-          ctx.rotate(a);
-          // atis parlamasi (ates ettigi an ok ucunda)
-          if (this.recoilT > 0) {
-            ctx.save();
-            ctx.globalAlpha = (this.recoilT / 0.18) * 0.7;
-            ctx.fillStyle = '#fff2b0';
-            ctx.beginPath();
-            ctx.arc(rs * 1.1, 0, rs * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-          // ok govdesi (recoil ile geri-ileri)
-          ctx.strokeStyle = '#ffd24a';
-          ctx.lineWidth = Math.max(1.4, 2 * s);
-          ctx.beginPath();
-          ctx.moveTo(rs * 0.2 + recoil, 0);
-          ctx.lineTo(rs * 1.0 + recoil, 0);
-          ctx.stroke();
-          // ok ucu
-          ctx.fillStyle = '#ffe07a';
-          ctx.beginPath();
-          ctx.moveTo(rs * 1.0 + recoil, 0);
-          ctx.lineTo(rs * 0.78 + recoil, -rs * 0.16);
-          ctx.lineTo(rs * 0.78 + recoil, rs * 0.16);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
+        // Kule okcusu (oyunun karinca stilinde, donen + ates eden)
+        const a2 = this.aimAngle;
+        if (a2 !== undefined && a2 !== null) {
+          const archSc = 1.25 * s * tier.scale;
+          // okcunun oturma noktasi (kule ust-merkez), nefes ofseti PNG ile ayni faz
+          const ax = x, ay = cy - drawH * 0.34;
+          const recoilN = this.recoilT > 0 ? (this.recoilT / 0.18) : 0;
+          drawTowerArcher(ax, ay, a2, archSc, recoilN, breath);
         }
       } else {
         // Henuz yuklenmediyse: eski yay/ok cizimine guvenli dusus
@@ -2760,6 +2733,68 @@ function drawAntFull(x, y, angle, wig, type, carrying, cam) {
       ctx.fillStyle = t.c2; ctx.beginPath(); ctx.arc(8.4, -0.6, (t.r - 1) * 0.4, 0, Math.PI * 2); ctx.fill();
     }
   }
+  ctx.restore();
+}
+
+// Kule okcusu: drawAntFull stilinde minik karinca + yay. cx,cy ekran merkezi, ang nisan acisi, sc olcek, draw recoil 0..1 (yay gerginligi), breathe nefes ofseti
+function drawTowerArcher(cx, cy, ang, sc, recoil, breathe) {
+  const body = '#e8542a', dark = '#c23d18';   // worker turuncu (oyunla ayni)
+  ctx.save();
+  ctx.translate(cx, cy + breathe);
+  ctx.rotate(ang);
+  ctx.scale(sc, sc);
+
+  // Bacaklar (oturur poz, kisa)
+  ctx.strokeStyle = dark; ctx.lineWidth = 1;
+  for (const lx of [-2, 1, 3]) {
+    ctx.beginPath();
+    ctx.moveTo(lx, -2); ctx.lineTo(lx - 1, -4);
+    ctx.moveTo(lx, 2);  ctx.lineTo(lx - 1, 4);
+    ctx.stroke();
+  }
+  // Govde (abdomen + thorax + kafa) — drawAntFull ile ayni oranlar
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.ellipse(-5, 0, 4, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.arc(5, 0, 1.8, 0, Math.PI * 2); ctx.fill();
+  // Antenler
+  ctx.strokeStyle = dark; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(6, -1.1); ctx.lineTo(9.5, -3);
+  ctx.moveTo(6, 1.1); ctx.lineTo(9.5, 3); ctx.stroke();
+  // Gozler
+  ctx.fillStyle = '#fff'; ctx.beginPath();
+  ctx.arc(6, -1.3, 0.9, 0, Math.PI * 2); ctx.arc(6, 1.3, 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#000'; ctx.beginPath();
+  ctx.arc(6.3, -1.3, 0.45, 0, Math.PI * 2); ctx.arc(6.3, 1.3, 0.45, 0, Math.PI * 2); ctx.fill();
+
+  // YAY (karincanin onunde, nisan yonunde) — recoil ile ip gerilir
+  const bowX = 8;            // yayin govdeden uzakligi
+  const pull = recoil * 2.2; // ip geri cekilme
+  ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.arc(bowX, 0, 4, -Math.PI * 0.6, Math.PI * 0.6); ctx.stroke();
+  // yay ipi (gerilir)
+  ctx.strokeStyle = 'rgba(240,235,220,0.9)'; ctx.lineWidth = 0.8;
+  const ty = Math.sin(Math.PI * 0.6) * 4, tx = Math.cos(Math.PI * 0.6) * 4;
+  ctx.beginPath();
+  ctx.moveTo(bowX + tx, -ty);
+  ctx.lineTo(bowX - pull, 0);   // gerginlik noktasi
+  ctx.lineTo(bowX + tx, ty);
+  ctx.stroke();
+  // ok (ip geriliyken hazir, birakinca firlar)
+  ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(bowX - pull, 0);
+  ctx.lineTo(bowX + 5 - pull, 0);
+  ctx.stroke();
+  ctx.fillStyle = '#ffe07a';
+  ctx.beginPath();
+  ctx.moveTo(bowX + 5 - pull, 0);
+  ctx.lineTo(bowX + 3.5 - pull, -1);
+  ctx.lineTo(bowX + 3.5 - pull, 1);
+  ctx.closePath(); ctx.fill();
+
   ctx.restore();
 }
 
