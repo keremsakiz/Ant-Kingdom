@@ -1883,10 +1883,40 @@ class Building {
       // --- RANGER: PNG sprite (emoji yok) ---
       if (RANGER_SPR.ready) {
         const iw = RANGER_SPR.img.width, ih = RANGER_SPR.img.height;
-        const drawW = 46 * s * tier.scale;           // ekranda kule genisligi
-        const drawH = drawW * (ih / iw);             // en-boy korunur
-        // Taban hizasi: emoji merkezi cy idi; PNG'yi biraz yukari oturt ki kaide hucreye otursun.
+        const drawW = 52 * s * tier.scale;           // 46 -> 52: biraz daha iri/okunur
+        const drawH = drawW * (ih / iw);
+        // Canlandirma: hafif parlaklik + doygunluk (oyunun canli paletine uysun)
+        ctx.save();
+        ctx.filter = 'brightness(1.08) saturate(1.18)';
         ctx.drawImage(RANGER_SPR.img, x - drawW / 2, cy - drawH * 0.62, drawW, drawH);
+        ctx.restore();
+
+        // Sabit PNG ustune: en yakin dusmana donen kucuk ok gostergesi (canli his)
+        const a = this.aimAngle;
+        if (a !== undefined && a !== null) {
+          const rs = 13 * s * tier.scale;
+          // okcunun durdugu nokta (kule ust-merkez civari)
+          const ox = x, oy = cy - drawH * 0.30;
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.rotate(a);
+          // ok govdesi
+          ctx.strokeStyle = '#ffd24a';
+          ctx.lineWidth = Math.max(1.4, 2 * s);
+          ctx.beginPath();
+          ctx.moveTo(rs * 0.2, 0);
+          ctx.lineTo(rs * 1.0, 0);
+          ctx.stroke();
+          // ok ucu
+          ctx.fillStyle = '#ffe07a';
+          ctx.beginPath();
+          ctx.moveTo(rs * 1.0, 0);
+          ctx.lineTo(rs * 0.78, -rs * 0.16);
+          ctx.lineTo(rs * 0.78, rs * 0.16);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
       } else {
         // Henuz yuklenmediyse: eski yay/ok cizimine guvenli dusus
         const a = this.aimAngle || 0;
