@@ -535,6 +535,21 @@ denge/görsel iyileştirme. Hepsi koddan doğrulandı:
    yerleştirme / kırmızı yıkım / şifa / boss AOE / ladybug heal push'ları `a`/`w` taşımadığı
    için birebir eski davranış.
 
+### Ranger (Atış Kulesi) sprite pilotu — TAMAMLANDI (ilk PNG sprite sistemi)
+- **`assets/` klasörü + `loadSprite(path)` image loader** (`_imgCache`). İlk harici asset:
+  `assets/ranger.png` (karıncasız boş taş kule, Google AI Studio üretimi, şeffaf PNG, ~673KB).
+- **`Building.draw()` içinde `this.type==='ranger'`** için emoji yerine PNG çizimi + güvenli
+  fallback. `imageSmoothingQuality='high'` (save/restore ile izole, kenar tırtıklılığı giderildi).
+- **Kule SABİT** (nefes yok), atış geri tepme (`recoilT`) + atış parlaması korundu.
+- **`drawTowerArcher()`**: oyunun karınca stilinde (`drawAntFull` dili) DİK/kompakt okçu karınca.
+  Gövde sabit, yay/kollar `aimAngle` ile en yakın düşmana döner; karınca nefes (`breath`) alır.
+  Asker rengi (`#8b1a1a`/`#5e0f0f`), okçu kaskı (anten yerine metalik başlık), ateşte yay gerilir.
+- **Ölçek tavanı**: PNG kule + karınca `towerScale = Math.min(tier.scale, 1.24)` → sv4+ tile
+  taşması önlendi. Halka/glow `tier.scale` ile büyümeye devam (seviye hissi korundu).
+- **Konum/boyut**: `archSc` 0.85, dikey konum `drawH*0.35`.
+- Seviye halkası/glow ve HP barı korundu. Render optimizasyonu (sprite cache, depth-sort,
+  dispatch) değişmedi.
+
 ---
 
 ## 3. SON COMMIT'LER
@@ -662,6 +677,13 @@ af81cfd Fix: 3 Safari render bug (menu emoji + title glow + HUD pill)
 > olduğu için **temiz (fresh) bir oturumla** başlanması önerilir.
 
 ### Ertelenen / Notlar
+- **Karınca-bina collision — ON HORIZON.** Toplayıcı/asker karıncalar binaların İÇİNDEN
+  geçiyor, yanından dolanmalı. Ant AI'ya (DOKUNMA) dokunduğu için **ayrı izole iş** — önce
+  keşif, sonra dikkatli prompt.
+- **Diğer binaların PNG sprite'a geçişi — ON HORIZON.** Ranger pilotu başarılı. Aynı kalıp
+  (`loadSprite` + draw ayrımı + ölçek tavanı + smoothing) diğer 6 binaya ve düşmanlara
+  uygulanabilir. Kredi verimliliği için **toplu görsel üretimi planlanmalı** (Meshy/Google AI
+  Studio abonelik duvarına takıyor; ücretsiz araç araştırılacak).
 - **Yuva hasar görsel göstergesi — ERTELENDİ (kendi izole fazına).** Höyükte HP'ye bağlı hasar
   görseli (eşikler **100/75/50/25**) hedefleniyor. Bu oturumda iki yöntem denendi ve **beğenilmedi
   / kaldırıldı**: (1) çizgi-tabanlı çatlaklar (çift katman gölge+hat, dallanma, yumuşak eğri —
