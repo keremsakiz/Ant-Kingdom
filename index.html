@@ -1977,6 +1977,38 @@ class Building {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ALARM_SPR.img, x - drawW / 2, cy - drawH * 0.62, drawW, drawH); // dikey: offset 0.62 (ranger gibi)
+
+        // --- SHIMMERING (glow nabzı + kıvılcım) ---
+        ctx.filter = 'none';  // PNG filtresi shimmering'i etkilemesin
+        const shT = performance.now() / 1000;
+        const phase = this.gridX + this.gridY;              // her taş farklı faz
+        // kristal merkezinin ekran konumu (sprite üst-orta bölge)
+        const gx = x, gy = cy - drawH * 0.40;
+
+        // 1) NABIZ GLOW: yumuşak yeşil hale, alpha sinüsle salınır
+        const glowPulse = 0.35 + 0.25 * Math.sin(shT * 2.2 + phase);
+        const glowR = (14 + 3 * Math.sin(shT * 2.2 + phase)) * s;
+        const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, glowR);
+        grad.addColorStop(0, 'rgba(90,255,138,' + (glowPulse * 0.75) + ')');
+        grad.addColorStop(1, 'rgba(90,255,138,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(gx, gy, glowR, 0, Math.PI * 2); ctx.fill();
+
+        // 2) KIVILCIMLAR: 3 küçük yıldız/nokta, faz kaydırmalı yukarı süzülür + yanıp söner
+        for (let k = 0; k < 3; k++) {
+          const sp = shT * 1.3 + phase + k * 2.1;            // her kıvılcım ayrı faz
+          const cyc = sp % (Math.PI * 2);                    // döngü
+          const rise = (cyc / (Math.PI * 2));                // 0→1 yükseliş
+          const sparkAlpha = Math.sin(rise * Math.PI);       // ortada parlak, uçlarda sönük
+          const sx = gx + Math.sin(sp * 1.7) * 8 * s;        // hafif yatay salınım
+          const syy = gy - rise * 16 * s;                    // yukarı süzül
+          ctx.globalAlpha = sparkAlpha * 0.9;
+          ctx.fillStyle = '#aaffcc';
+          ctx.beginPath(); ctx.arc(sx, syy, 1.6 * s, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        // --- /SHIMMERING ---
+
         ctx.restore();
       } else {
         // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
