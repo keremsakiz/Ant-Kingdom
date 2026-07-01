@@ -240,6 +240,7 @@ function loadSprite(path) {
 const RANGER_SPR = loadSprite('assets/ranger.png');
 const MOAT_SPR = loadSprite('assets/moat.png');
 const BARRICADE_SPR = loadSprite('assets/barricade.png');
+const ALARM_SPR = loadSprite('assets/alarm.png');
 
 function getEmojiSprite(emoji, fontPx) {
   const key = emoji + '|' + fontPx;
@@ -1965,6 +1966,23 @@ class Building {
         ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
       }
       // --- /BARRICADE ---
+    } else if (this.type === 'alarm') {
+      // --- ALARM (Şifa Taşı): PNG sprite (emoji yok) ---
+      if (ALARM_SPR.ready) {
+        const iw = ALARM_SPR.img.width, ih = ALARM_SPR.img.height;
+        const drawW = 42 * s;                     // dikey yapı, taban dar
+        const drawH = drawW * (ih / iw);          // en-boy oranı korunur
+        ctx.save();
+        ctx.filter = 'brightness(1.05) saturate(1.12)';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(ALARM_SPR.img, x - drawW / 2, cy - drawH * 0.62, drawW, drawH); // dikey: offset 0.62 (ranger gibi)
+        ctx.restore();
+      } else {
+        // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
+        ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
+      }
+      // --- /ALARM ---
     } else {
       ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
     }
