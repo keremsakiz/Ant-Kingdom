@@ -241,6 +241,7 @@ const RANGER_SPR = loadSprite('assets/ranger.png');
 const MOAT_SPR = loadSprite('assets/moat.png');
 const BARRICADE_SPR = loadSprite('assets/barricade.png');
 const ALARM_SPR = loadSprite('assets/alarm.png');
+const CATAPULT_SPR = loadSprite('assets/catapult.png');
 
 function getEmojiSprite(emoji, fontPx) {
   const key = emoji + '|' + fontPx;
@@ -2015,6 +2016,23 @@ class Building {
         ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
       }
       // --- /ALARM ---
+    } else if (this.type === 'catapult') {
+      // --- CATAPULT (Mancınık): PNG sprite (emoji yok). Karınca P3'te ayrı çizilecek. ---
+      if (CATAPULT_SPR.ready) {
+        const iw = CATAPULT_SPR.img.width, ih = CATAPULT_SPR.img.height;
+        const drawW = 54 * s;                     // yatay/geniş mancınık
+        const drawH = drawW * (ih / iw);          // en-boy oranı korunur
+        ctx.save();
+        ctx.filter = 'brightness(1.05) saturate(1.1)';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(CATAPULT_SPR.img, x - drawW / 2, cy - drawH * 0.55, drawW, drawH);
+        ctx.restore();
+      } else {
+        // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
+        ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
+      }
+      // --- /CATAPULT ---
     } else {
       ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
     }
