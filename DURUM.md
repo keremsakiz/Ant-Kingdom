@@ -550,29 +550,91 @@ denge/görsel iyileştirme. Hepsi koddan doğrulandı:
 - Seviye halkası/glow ve HP barı korundu. Render optimizasyonu (sprite cache, depth-sort,
   dispatch) değişmedi.
 
+### Bina PNG Sprite Geçişi — DURUM (bu oturum, hepsi main'de)
+
+Ranger pilotu kalıbı (`loadSprite` + `SPR.ready` PNG / `else` güvenli emoji fallback + ölçek
+tavanı + `imageSmoothingQuality='high'` save/restore izole) **5 binaya** uygulandı. Draw
+dispatch else-if zinciri: `ranger → moat → barricade → alarm → catapult → else{generic emoji}`
+(çift çizim imkânsız). Loader'lar modül seviyesinde (`RANGER/MOAT/BARRICADE/ALARM/CATAPULT_SPR`).
+
+- ✅ **ranger** (🏹 Atış Kulesi) — PNG + `drawTowerArcher` okçu karınca (pilot).
+- ✅ **moat** (🌊 Hendek) — PNG, yassı; `drawW=46*s`, dikey offset `0.47`.
+- ✅ **barricade** (🪨 Barikat) — PNG; `drawW=50*s`, offset `0.55`, yatay `+3*s`.
+- ✅ **alarm** (💚 Şifa Taşı) — PNG (dikey kaya + jade kristal); `drawW=42*s`, offset `0.62`.
+  **+ sürekli shimmering** (aşağıda).
+- ✅ **catapult** (🏰 Mancınık) — PNG + `drawCatapultCommander` komutan karınca + ateş jesti
+  (P1/P2/P3, aşağıda); `drawW=54*s`, offset `0.55`.
+- ⬜ **barracks** (🗡️ Kışla) — HÂLÂ EMOJI. Hedef: **ÇADIR** (büyükçe, başlangıç sade).
+- ⬜ **tower** (🍄 Zehir Kulesi) — HÂLÂ EMOJI. Hedef: PNG + canlı çizim + **DUMAN SALINIMI**
+  efekti (pulse değil, yükselen duman hayali).
+
+> Seviye halkası/glow + HP barı **generic ortak kod** — her PNG dalı ondan faydalanmaya devam
+> ediyor (draw dallarında sadece PNG + kendi özel çizimi var). Emoji sprite cache/depth-sort/
+> render opt değişmedi. Assetler git'te takipli (`git ls-files assets/`): ranger, moat, barricade,
+> alarm, catapult (.png).
+
+### alarm (Şifa Taşı) Shimmering — TAMAMLANDI (Yol B: deterministik, havuz kullanmaz)
+- Alarm draw dalında, PNG çiziminden SONRA (save/restore İÇİNDE): `ctx.filter='none'` +
+  `performance.now()/1000` + grid-faz (`this.gridX+this.gridY` → her taş farklı faz).
+- **1) Nabız glow**: `createRadialGradient` yeşil (`rgba(90,255,138,...)`) hale, alpha+yarıçap
+  sinüsle salınır (yoğunluk `glowPulse*0.75`). **2) Kıvılcımlar**: 3 açık-yeşil (`#aaffcc`) nokta,
+  faz kaydırmalı yukarı süzülüp yanıp söner (`sparkAlpha=sin(rise*π)`).
+- **Parçacık havuzu/`buildPulses`/`burst` KULLANMAZ** — salt yerel deterministik çizim, her frame
+  ucuz. `ctx.globalAlpha=1` ile biter (leak yok). Commit `1c1c94c`.
+
+### catapult (Mancınık) — TAMAMLANDI (P1+P2+P3 + jest)
+**P1 — PNG sprite (`d79497a`):** moat kalıbı, salt draw. Ateş/nişan/recoil'e dokunulmadı.
+
+**P2 — aimAngle nişan + recoilT geri-tepme (`e0c3a85`, davranışsal):**
+- Catapult update'ine, `shootTimer += dt`'den ÖNCE **her-frame en yakın düşman taraması** (ranger
+  deseni, kendi `{ }` blok-scope'u `wA/aimBest` → alttaki ateş `w/best` ile çakışmaz) → `this.aimAngle`.
+- Ateşte (`bullets.push` + `sndShoot` sonrası) `this.recoilT = 0.28` (ranger 0.18'den ağır).
+- **recoilT decay RANGER İLE ORTAK**: `Building.update` başında, tip-dallarından ÖNCE, satır ~1714
+  `if (this.recoilT>0) this.recoilT = max(0, recoilT - dt/1000)` — tüm binalar paylaşır, ekstra kod yok.
+- Mevcut cooldown/hedefleme/gülle/AOE mantığına dokunulmadı.
+
+**P3 — `drawCatapultCommander(cx,cy,ang,sc,recoil,breathe)` komutan karınca (`5598674` + zırh `607588a`):**
+- `drawTowerArcher`'dan AYRI yeni fonksiyon (ranger'a dokunulmadı). Aynı imza/desen (gövde+kafa SABIT,
+  sadece kol grubu `ang` ile döner; `recoil` ile kollar geriye/yukarı savrulur).
+- **Mor/mavi gövde** (`#5a3a9a`/`#3a2470`) — glow/seviye sistemine uygun **sv1 sade tasarım**.
+- **Katmanlı altın zırh** (elit komutan): lorica lamel karın bandı (3 yatay şerit) + göğüs plakası +
+  **komutan madalyonu** + hacimli omuzluk (pauldron, 2+ katman + beyaz ışık). Katmanlar:
+  highlight `#f5d97a` → altın `#e8c14a` → koyu altın `#8a6a15`/`#b8901e` → koyu metal `#6a5518`.
+- **Tek uzun kırmızı Romalı tüy** (crest, `#d43a3a`) — kask tepesinden yukarı-arkaya kavisli, iki
+  kenar bezier + koyu orta çizgi + highlight. (4 dik tüy denemesi bununla değişti.)
+- Çağrı catapult draw dalında, PNG'den sonra: `cmdSc=1.05*s*min(tier.scale,1.24)`, konum
+  `x+drawW*0.16, cy+drawH*0.10` (sağ çıkrık/tekerlek yanı), `recoilN=recoilT/0.28`. `breath` lokal
+  hesaplandı (catapult dalında ranger'daki gibi hazır değildi).
+
+**Ateş anı jesti — kova parlama + toz (`b4bafa0`):** komutan çağrısından sonra, `recoilN>0.05` iken:
+kısa sarı-beyaz radial flash + 4 gri (`#b0a89a`) toz bulutu (recoil sönerken dışa yayılıp solar).
+İlk **"fırlayan gülle"** denemesi (kovadan çıkan gri top) **kaldırıldı** — yerine bu jest. Gerçek
+`bullets` güllesi + AOE patlama AYRI, dokunulmadı (bu salt binanın üstünde görsel jest).
+
 ---
 
 ## 3. SON COMMIT'LER
 
 ```
 (git log --oneline ile en günceli doğrula — bu docs commit'i HEAD olur)
-697eb21 Revert: yuva yipranma lekesi kaldirildi (ileride izole faz)
-5e428eb Visual: yuva yipranma lekesi efekti (multiply radyal golge)   ← kaldirildi
-126bf3d Revert: yuva catlak efekti kaldirildi (dogal durmadi)
-30fa174 / ffcd2a6 / 3ca4edb Visual: yuva catlak efekti denemeleri        ← kaldirildi
-bc2289c Visual: zehir kulesi AOE halkasi belirginlestirildi (cift dalga)
-7906c02 Balance: dusman hizi erken dalgalarda yavas (dalga 5'te normal)
-4d86ec7 Visual: feromon izi gorsel olarak inceltildi (alpha x0.25)
-da7ce27 docs: 3 Safari bug + PAUSED Ana Menuye Don; sirada Faz 5
-b7f523f Feat: PAUSED ekranina Ana Menuye Don (iki asamali onay)
-4ccc428 Fix: menu emoji gorunurluk (Safari fillStyle state reset)
-af81cfd Fix: 3 Safari render bug (menu emoji + title glow + HUD pill)
+HEAD = b4bafa0  (main + claude/gifted-planck-JSihd SENKRON, ikisi de origin'e push'lu)
+
+--- Bu oturum: bina PNG sprite geçişi (moat/barricade/alarm/catapult) ---
+b4bafa0 Visual: catapult ates ani kova parlama + toz jesti (dusen gulle kaldirildi)
+607588a Visual: catapult komutan zirh detay - katmanli altin, omuzluk, madalyon, lamel
+5598674 Feat: catapult komutan karinca - mor govde + altin zirh + tuy (P3)
+e0c3a85 Feat: catapult nisan acisi (aimAngle) + geri-tepme (recoilT) - P2
+d79497a Visual: catapult (Mancinik) PNG sprite - moat kalibi (P1 draw)
+1c1c94c Visual: alarm (Sifa Tasi) shimmering efekti - nabiz glow + kivilcim
+1cdda65 Visual: alarm (Sifa Tasi) PNG sprite - dikey kaya + jade kristal
+b8edf30 Visual: barricade (Barikat) PNG sprite - moat kalibi, spike'li, konum ayarli
+0ce8994 Visual: moat (Hendek) PNG sprite - ranger kalibi, olcek+oturma ayarli
+5d6b0b9 Visual: moat (Hendek) PNG sprite - ranger kalibi + guvenli fallback
 ```
-> **Branch durumu:** Çalışma `claude/gifted-planck-JSihd` üzerinde; `main` ile senkron,
-> her faz tamamlanınca main'e merge ediliyor. **Faz 4'ün tüm commitleri (`1fc0471` → `eeaad44`:
-> ses + game over polish + HUD cila) ÇOKTAN main'de** — eski "merge bekliyor" notları geçersiz.
-> Bu oturumun Faz 5-öncesi ön işleri (feromon incelt + düşman hız + zehir halka, `4d86ec7` →
-> `bc2289c`) branch'te commitli. En güncel durum için `git log --oneline -8` + `git status -sb`.
+> **Branch durumu:** `main` ve `claude/gifted-planck-JSihd` **tamamen senkron** (ikisi de
+> `b4bafa0`, origin'e push'lu). Bina PNG sprite işleri (moat→catapult, `5d6b0b9` → `b4bafa0`)
+> main'e fast-forward merge edildi. Önceki tüm işler (Faz 4, Faz 5-öncesi ön işler) da main'de.
+> En güncel durum için `git log --oneline -10` + `git status -sb`.
 
 ---
 
@@ -680,10 +742,25 @@ af81cfd Fix: 3 Safari render bug (menu emoji + title glow + HUD pill)
 - **Karınca-bina collision — ON HORIZON.** Toplayıcı/asker karıncalar binaların İÇİNDEN
   geçiyor, yanından dolanmalı. Ant AI'ya (DOKUNMA) dokunduğu için **ayrı izole iş** — önce
   keşif, sonra dikkatli prompt.
-- **Diğer binaların PNG sprite'a geçişi — ON HORIZON.** Ranger pilotu başarılı. Aynı kalıp
-  (`loadSprite` + draw ayrımı + ölçek tavanı + smoothing) diğer 6 binaya ve düşmanlara
-  uygulanabilir. Kredi verimliliği için **toplu görsel üretimi planlanmalı** (Meshy/Google AI
-  Studio abonelik duvarına takıyor; ücretsiz araç araştırılacak).
+- **Kalan bina PNG geçişleri — ON HORIZON.** 5/7 bina PNG'ye geçti (bkz. Bölüm 2 "Bina PNG
+  Sprite Geçişi"). Kalan ikisi:
+  - **barracks (🗡️ Kışla) → ÇADIR** (büyükçe, başlangıç sade — seviye görsel gelişimine uygun).
+  - **tower (🍄 Zehir Kulesi) → PNG + canlı çizim + DUMAN SALINIMI** efekti (nabız/pulse DEĞİL,
+    yükselen duman hayali — alarm shimmering'in `performance.now()` faz deseniyle yapılabilir).
+  Kalıp hazır (`loadSprite` + draw dalı + ölçek tavanı + fallback). Düşmanlara da uygulanabilir.
+- **AUTO-TILING / DUVAR BİRLEŞME SİSTEMİ — ERTELENDİ (tam bütçeli izole faz).** moat + barricade
+  yan yana gelince **Clash of Clans mantığıyla** birleşen / yönü değişen duvar. Komşu-kontrolü
+  (neighbor bitmask) + çoklu bağlantı sprite seti (uç/köşe/T/düz parçalar) gerekir. DOKUNMA'daki
+  yerleştirme/grid sistemine yakın → dikkatli, tam bütçeli izole faz.
+- **SEVİYE = GÖRSEL GELİŞİM SİSTEMİ — ERTELENDİ (büyük workstream, glow'a dokunur).** Seviye
+  atladıkça bina **BÜYÜMESİN, GÖRSELİ zenginleşsin** (sv1 sade → sv3 spike'lı/çatallı/zengin).
+  Mevcut glow/halka + `tier.scale` büyütme mekaniği KALDIRILIP gerçek görsel gelişime geçilir.
+  TÜM binalar için seviye-başına ayrı sprite/çizim setleri. **Not:** catapult komutan zırhı ve
+  alarm kristali bu sisteme uygun **sv1 sade** başlatıldı → ileride sv2/sv3 varyantları eklenecek.
+  Glow sistemi (DOKUNMA'ya yakın) değişeceği için tam bütçeli izole faz.
+- **GELİŞMİŞ MANCINIK KOL ANİMASYONU (Seçenek C) — ERTELENDİ.** `catapult.png`'yi **2 parçaya böl**
+  (taban + ayrı kol sprite), kolu pivotla gerçek gerilme/savrulma animasyonu. Şu an **Seçenek A**
+  uygulandı (komutan karınca + `recoilT` + kova jesti); C ayrı izole faz (PNG dilimleme + pivot).
 - **Yuva hasar görsel göstergesi — ERTELENDİ (kendi izole fazına).** Höyükte HP'ye bağlı hasar
   görseli (eşikler **100/75/50/25**) hedefleniyor. Bu oturumda iki yöntem denendi ve **beğenilmedi
   / kaldırıldı**: (1) çizgi-tabanlı çatlaklar (çift katman gölge+hat, dallanma, yumuşak eğri —
