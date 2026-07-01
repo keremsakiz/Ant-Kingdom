@@ -2056,6 +2056,37 @@ class Building {
           const cx2 = x + drawW * 0.16, cy2 = cy + drawH * 0.10;   // sağ çıkrık/tekerlek yanı, ayaklar yere değer (ince ayar edilecek)
           const recoilN = this.recoilT > 0 ? (this.recoilT / 0.28) : 0;  // P2'de recoilT=0.28
           drawCatapultCommander(cx2, cy2, a2, cmdSc, recoilN, breath);
+
+          // --- ATEŞ ANI: kovada toz/parlama (recoil ile senkron) ---
+          if (recoilN > 0.05) {
+            // kova konumu: mancınık kolu ucu (aimAngle yönünde, sprite üst bölgeden ileri)
+            const px = x + Math.cos(this.aimAngle) * 16 * s;
+            const py = (cy - drawH * 0.34) + Math.sin(this.aimAngle) * 10 * s;
+            ctx.save();
+            // 1) PARLAMA: kısa sarı-beyaz flash (recoil zirvesinde parlak)
+            const flashA = recoilN * 0.6;
+            const flashR = (6 + recoilN * 5) * s;
+            const fg = ctx.createRadialGradient(px, py, 0, px, py, flashR);
+            fg.addColorStop(0, 'rgba(255,240,200,' + flashA + ')');
+            fg.addColorStop(1, 'rgba(255,200,120,0)');
+            ctx.fillStyle = fg;
+            ctx.beginPath(); ctx.arc(px, py, flashR, 0, Math.PI * 2); ctx.fill();
+            // 2) TOZ: 3-4 küçük gri toz bulutu, recoil sönerken yayılıp solar
+            const spread = (1 - recoilN);            // 0 (çıkış) → 1 (dağılım)
+            for (let d = 0; d < 4; d++) {
+              const ang = (d / 4) * Math.PI * 2 + this.aimAngle;
+              const dist = (2 + spread * 8) * s;
+              const dx = px + Math.cos(ang) * dist;
+              const dy = py + Math.sin(ang) * dist - spread * 3 * s;  // hafif yukarı
+              const dR = (2.2 - spread * 1.2) * s;
+              ctx.globalAlpha = Math.max(0, recoilN * 0.5);
+              ctx.fillStyle = '#b0a89a';
+              ctx.beginPath(); ctx.arc(dx, dy, dR, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            ctx.restore();
+          }
+          // --- /ATEŞ ANI ---
         }
       } else {
         // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
