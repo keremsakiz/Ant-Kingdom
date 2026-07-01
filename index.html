@@ -2045,6 +2045,18 @@ class Building {
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(CATAPULT_SPR.img, x - drawW / 2, cy - drawH * 0.55, drawW, drawH);
         ctx.restore();
+
+        // Mancınık komutanı (mor/altın zırhlı, gülleyi ateşleyen). breath lokal hesaplanır
+        // (catapult dalında ranger'daki gibi hazır değildi).
+        const t = performance.now() / 1000;
+        const breath = Math.sin(t * 1.6 + (this.gridX + this.gridY)) * 1.2 * s;
+        const a2 = this.aimAngle;
+        if (a2 !== undefined && a2 !== null) {
+          const cmdSc = 1.05 * s * Math.min(tier.scale, 1.24);
+          const cx2 = x + drawW * 0.16, cy2 = cy + drawH * 0.10;   // sağ çıkrık/tekerlek yanı, ayaklar yere değer (ince ayar edilecek)
+          const recoilN = this.recoilT > 0 ? (this.recoilT / 0.28) : 0;  // P2'de recoilT=0.28
+          drawCatapultCommander(cx2, cy2, a2, cmdSc, recoilN, breath);
+        }
       } else {
         // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
         ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
@@ -2941,6 +2953,127 @@ function drawTowerArcher(cx, cy, ang, sc, recoil, breathe) {
   ctx.lineTo(bowX + 3 - pull, -1);
   ctx.lineTo(bowX + 3 - pull, 1);
   ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+/**
+ * Mancınık komutanı: mor/mavi gövde + altın zırh plakaları + tüylü (crest) altın miğfer.
+ * drawTowerArcher deseni (gövde/kafa SABIT, sadece kol grubu ang ile döner). recoil arttıkça
+ * kollar geriye/yukarı savrulur (gülleyi bıraktı hissi). YENİ zaman kaynağı kurmaz — breathe
+ * çağırandan gelir. İmza ranger'la aynı: (cx, cy, ang, sc, recoil, breathe).
+ */
+function drawCatapultCommander(cx, cy, ang, sc, recoil, breathe) {
+  const body = '#5a3a9a', dark = '#3a2470';       // mor/mavi gövde
+  const gold = '#e8c14a', goldD = '#b8901e';      // altın zırh/miğfer
+  ctx.save();
+  ctx.translate(cx, cy + breathe);
+  ctx.scale(sc, sc);
+
+  // Gölge (ayakta duranın altında)
+  ctx.globalAlpha = 0.22; ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(0, 3, 5.2, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Abdomen (arka/alt)
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.ellipse(0, 2.2, 3.8, 4.4, 0, 0, Math.PI * 2); ctx.fill();
+  // Thorax (göğüs)
+  ctx.beginPath(); ctx.ellipse(0, -1, 3.1, 3.1, 0, 0, Math.PI * 2); ctx.fill();
+
+  // ZIRH (katmanlı, hacimli — "giyilmiş" his): omuzluk + göğüs plakası + karın bandı.
+  const goldDk = '#6a5518';                         // koyu metal (derin gölge katmanı)
+  // OMUZLUKLAR (pauldron): koyu metal taban + altın dış kenar + parlaklık → hacim
+  for (const sgn of [-1, 1]) {
+    ctx.fillStyle = goldDk;                          // alt gölge (biraz kaydırılmış)
+    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -1.1, 1.7, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = gold;                            // ana altın plaka
+    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -1.4, 1.6, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f4d97a';                       // üst highlight
+    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -2.0, 0.9, 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // GÖĞÜS PLAKASI: altın ana plaka + ortada koyu metal V şerit (farklı katman)
+  ctx.fillStyle = goldD;                             // taban (koyu altın çerçeve)
+  ctx.beginPath(); ctx.ellipse(0, -0.7, 2.9, 1.9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = gold;                              // ana altın plaka
+  ctx.beginPath(); ctx.ellipse(0, -0.8, 2.5, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = goldDk;                            // ortada koyu metal V (chevron)
+  ctx.beginPath();
+  ctx.moveTo(0, 0.6);
+  ctx.lineTo(-1.4, -1.6);
+  ctx.lineTo(-0.7, -1.6);
+  ctx.lineTo(0, -0.3);
+  ctx.lineTo(0.7, -1.6);
+  ctx.lineTo(1.4, -1.6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f4d97a';                         // göğüs üst parlaklık
+  ctx.beginPath(); ctx.ellipse(0, -1.6, 1.6, 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  // KARIN BANDI (koyu altın şerit, alt katman)
+  ctx.fillStyle = goldD;
+  ctx.fillRect(-2.6, 0.8, 5.2, 0.9);
+
+  // Kafa (en üstte)
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.arc(0, -4.5, 2.8, 0, Math.PI * 2); ctx.fill();
+
+  // Altın miğfer (kafayı örten yarım kubbe)
+  ctx.fillStyle = gold;
+  ctx.beginPath(); ctx.arc(0, -4.8, 3.1, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#f4d97a';                        // üst ışık (parlaklık)
+  ctx.beginPath();
+  ctx.arc(0, -5.0, 3.1, Math.PI * 1.15, Math.PI * 1.6);
+  ctx.lineWidth = 1.2; ctx.strokeStyle = '#f4d97a'; ctx.stroke();
+  ctx.fillStyle = goldD;                            // miğfer alt kenar bandı (koyu altın)
+  ctx.fillRect(-3.1, -4.9, 6.2, 1.1);
+
+  // TEK UZUN KIRMIZI TÜY (Romalı komutan crest'i): kask tepesinden yukarı-arkaya
+  // kavisli, aşağı incelen tek belirgin plume. İki kenar bezier + koyu orta çizgi (hacim).
+  ctx.fillStyle = '#d43a3a';
+  ctx.beginPath();
+  ctx.moveTo(-0.6, -7.6);                                    // taban ön kenar (kask tepesi)
+  ctx.quadraticCurveTo(-3.6, -12.2, -2.4, -16.4);           // ön kenar yukarı-arkaya kavis
+  ctx.quadraticCurveTo(-1.0, -15.0, -0.2, -12.0);           // uç incelir
+  ctx.quadraticCurveTo(0.6, -10.4, 1.0, -7.4);              // arka kenar geri iner
+  ctx.closePath(); ctx.fill();
+  // koyu orta gölge çizgisi (tüylerin ayrımı hissi)
+  ctx.strokeStyle = '#a02828'; ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-0.2, -7.6);
+  ctx.quadraticCurveTo(-2.2, -12.0, -2.0, -15.8);
+  ctx.stroke();
+  // açık kırmızı üst highlight (parlaklık)
+  ctx.strokeStyle = '#f06060'; ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(-0.9, -8.0);
+  ctx.quadraticCurveTo(-3.2, -12.0, -2.5, -15.9);
+  ctx.stroke();
+
+  // Gözler (beyaz + siyah bebek, ranger gibi)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(-1.1, -5.2, 0.8, 0, Math.PI * 2);
+  ctx.arc(1.1, -5.2, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(-1.1, -5.4, 0.4, 0, Math.PI * 2);
+  ctx.arc(1.1, -5.4, 0.4, 0, Math.PI * 2); ctx.fill();
+
+  // KOLLAR: nişan yönüne döner (gövde sabit). İki kol öne uzanır (ipi/kolu çeker).
+  // recoil arttıkça kollar geriye savrulur (gülleyi bıraktı).
+  ctx.save();
+  ctx.rotate(ang);
+  const reach = 7 - recoil * 3.0;                   // recoil ile kollar geri çekilir
+  const lift  = recoil * 2.2;                        // recoil ile yukarı savrulma
+  ctx.strokeStyle = dark; ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -1.6); ctx.lineTo(reach, -1.6 - lift);   // üst kol
+  ctx.moveTo(0,  1.6); ctx.lineTo(reach,  1.6 - lift);   // alt kol
+  ctx.stroke();
+  // eller (altın eldiven ucu)
+  ctx.fillStyle = gold;
+  ctx.beginPath(); ctx.arc(reach, -1.6 - lift, 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(reach,  1.6 - lift, 0.9, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
   ctx.restore();
