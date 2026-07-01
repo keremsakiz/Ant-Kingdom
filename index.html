@@ -238,6 +238,7 @@ function loadSprite(path) {
 }
 // Ranger sprite'ini oyun acilirken yuklemeye basla (pop'u onler)
 const RANGER_SPR = loadSprite('assets/ranger.png');
+const MOAT_SPR = loadSprite('assets/moat.png');
 
 function getEmojiSprite(emoji, fontPx) {
   const key = emoji + '|' + fontPx;
@@ -1929,6 +1930,23 @@ class Building {
         ctx.restore();
       }
       // --- /RANGER ---
+    } else if (this.type === 'moat') {
+      // --- MOAT (Hendek): PNG sprite (emoji yok) ---
+      if (MOAT_SPR.ready) {
+        const iw = MOAT_SPR.img.width, ih = MOAT_SPR.img.height;
+        const drawW = 60 * s;                    // hendek geniş/yassı: ranger'dan biraz büyük taban
+        const drawH = drawW * (ih / iw);         // en-boy oranı korunur
+        ctx.save();
+        ctx.filter = 'brightness(1.05) saturate(1.1)';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(MOAT_SPR.img, x - drawW / 2, cy - drawH * 0.5, drawW, drawH); // yassı yapı: dikey offset 0.5 (ranger 0.62 idi)
+        ctx.restore();
+      } else {
+        // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
+        ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
+      }
+      // --- /MOAT ---
     } else {
       ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
     }
