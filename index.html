@@ -1934,13 +1934,13 @@ class Building {
       // --- MOAT (Hendek): PNG sprite (emoji yok) ---
       if (MOAT_SPR.ready) {
         const iw = MOAT_SPR.img.width, ih = MOAT_SPR.img.height;
-        const drawW = 60 * s;                    // hendek geniş/yassı: ranger'dan biraz büyük taban
+        const drawW = 46 * s;                    // hendek geniş/yassı: ranger'dan biraz büyük taban
         const drawH = drawW * (ih / iw);         // en-boy oranı korunur
         ctx.save();
         ctx.filter = 'brightness(1.05) saturate(1.1)';
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(MOAT_SPR.img, x - drawW / 2, cy - drawH * 0.5, drawW, drawH); // yassı yapı: dikey offset 0.5 (ranger 0.62 idi)
+        ctx.drawImage(MOAT_SPR.img, x - drawW / 2, cy - drawH * 0.47, drawW, drawH); // yassı yapı: dikey offset 0.47 (zemine oturur)
         ctx.restore();
       } else {
         // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
