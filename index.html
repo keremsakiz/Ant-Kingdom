@@ -1827,6 +1827,22 @@ class Building {
       // MANCINIK: ranger gibi mermi/gülle atar AMA temas noktasında tower gibi AOE
       // hasar verir. Yavaş (cooldown 2500/eff) ama sert. Menzildeki EN YAKIN düşmanı
       // hedef alıp ona "aoe" işaretli gülle fırlatır; updateBullets temasta patlatır.
+      // Her frame: menzildeki en yakın düşmana nişan al (görsel aim için — ranger deseni).
+      {
+        const wA = worldFromGrid(this.gridX, this.gridY);
+        const rA2 = (cfg.range * eff) ** 2;
+        let aimBest = null, aimD = rA2;
+        for (const e of enemies) {
+          if (!e.active) continue;
+          const d2 = (e.wx - wA.x) ** 2 + (e.wy - wA.y) ** 2;
+          if (d2 <= aimD) { aimD = d2; aimBest = e; }
+        }
+        if (aimBest) {
+          this.aimAngle = Math.atan2(aimBest.wy - wA.y, aimBest.wx - wA.x);
+        } else {
+          this.aimAngle = this.aimAngle || 0; // hedef yok: son açıda sabit kal
+        }
+      }
       this.shootTimer += dt;
       if (this.shootTimer >= cfg.cooldown / eff) {
         this.shootTimer = 0;
@@ -1850,6 +1866,7 @@ class Building {
             lvl: this.level
           });
           sndShoot();
+          this.recoilT = 0.28;  // mancınık ağır: ranger'dan (0.18) daha uzun/belirgin recoil
         }
       }
     }
