@@ -2982,36 +2982,56 @@ function drawCatapultCommander(cx, cy, ang, sc, recoil, breathe) {
   // Thorax (göğüs)
   ctx.beginPath(); ctx.ellipse(0, -1, 3.1, 3.1, 0, 0, Math.PI * 2); ctx.fill();
 
-  // ZIRH (katmanlı, hacimli — "giyilmiş" his): omuzluk + göğüs plakası + karın bandı.
-  const goldDk = '#6a5518';                         // koyu metal (derin gölge katmanı)
-  // OMUZLUKLAR (pauldron): koyu metal taban + altın dış kenar + parlaklık → hacim
-  for (const sgn of [-1, 1]) {
-    ctx.fillStyle = goldDk;                          // alt gölge (biraz kaydırılmış)
-    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -1.1, 1.7, 1.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = gold;                            // ana altın plaka
-    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -1.4, 1.6, 1.4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#f4d97a';                       // üst highlight
-    ctx.beginPath(); ctx.ellipse(sgn * 3.0, -2.0, 0.9, 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  // ZIRH (katmanlı, hacimli — "elit komutan" his): lamel karın + göğüs plakası + omuzluk.
+  // Renk katmanları: highlight (üst) → ana altın → koyu altın → koyu metal (alt gölge).
+  const goldDk = '#6a5518';                          // koyu metal (derin gölge)
+  const goldHi = '#f5d97a';                          // açık altın highlight
+  const goldSh = '#8a6a15';                          // koyu altın gölge
+
+  // KARIN / ALT ZIRH: lorica segmentata — üst üste binen 3 yatay altın lamel bandı.
+  for (let l = 0; l < 3; l++) {
+    const ly = 1.2 + l * 1.15;                       // aşağı doğru dizilim
+    const lw = 3.2 - l * 0.35;                       // alt bantlar hafif dar (gövde daralır)
+    ctx.fillStyle = goldSh;                          // altına ince gölge
+    ctx.beginPath(); ctx.ellipse(0, ly + 0.35, lw, 0.75, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = gold;                            // ana altın lamel
+    ctx.beginPath(); ctx.ellipse(0, ly, lw, 0.75, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = goldHi;                          // üst kenar ışık şeridi
+    ctx.beginPath(); ctx.ellipse(0, ly - 0.3, lw * 0.8, 0.28, 0, 0, Math.PI * 2); ctx.fill();
   }
-  // GÖĞÜS PLAKASI: altın ana plaka + ortada koyu metal V şerit (farklı katman)
+
+  // GÖĞÜS PLAKASI: koyu çerçeve + ana altın + üst highlight + alt gölge + madalyon.
   ctx.fillStyle = goldD;                             // taban (koyu altın çerçeve)
-  ctx.beginPath(); ctx.ellipse(0, -0.7, 2.9, 1.9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -0.7, 2.9, 1.95, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = goldSh;                            // alt gölge (hacim)
+  ctx.beginPath(); ctx.ellipse(0, -0.3, 2.5, 1.6, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = gold;                              // ana altın plaka
   ctx.beginPath(); ctx.ellipse(0, -0.8, 2.5, 1.6, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = goldDk;                            // ortada koyu metal V (chevron)
-  ctx.beginPath();
-  ctx.moveTo(0, 0.6);
-  ctx.lineTo(-1.4, -1.6);
-  ctx.lineTo(-0.7, -1.6);
-  ctx.lineTo(0, -0.3);
-  ctx.lineTo(0.7, -1.6);
-  ctx.lineTo(1.4, -1.6);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#f4d97a';                         // göğüs üst parlaklık
-  ctx.beginPath(); ctx.ellipse(0, -1.6, 1.6, 0.5, 0, 0, Math.PI * 2); ctx.fill();
-  // KARIN BANDI (koyu altın şerit, alt katman)
-  ctx.fillStyle = goldD;
-  ctx.fillRect(-2.6, 0.8, 5.2, 0.9);
+  ctx.fillStyle = goldHi;                            // üst kenar highlight şeridi
+  ctx.beginPath(); ctx.ellipse(0, -1.7, 1.7, 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  // Komutan madalyonu (göğüs ortası): koyu metal daire + altın kenar + ışık noktası.
+  ctx.fillStyle = gold;
+  ctx.beginPath(); ctx.arc(0, -0.7, 1.05, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = goldDk;
+  ctx.beginPath(); ctx.arc(0, -0.7, 0.72, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = goldHi;
+  ctx.beginPath(); ctx.arc(-0.28, -1.0, 0.24, 0, Math.PI * 2); ctx.fill();  // madalyon ışık yansıması
+
+  // OMUZLUKLAR (pauldron): 2 katman kubbe — koyu metal taban + altın kubbe + beyaz ışık.
+  for (const sgn of [-1, 1]) {
+    ctx.fillStyle = goldDk;                          // alt gölge/taban (dışa taşkın)
+    ctx.beginPath(); ctx.ellipse(sgn * 3.15, -1.0, 1.85, 1.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = goldSh;                          // ara koyu altın (derinlik)
+    ctx.beginPath(); ctx.ellipse(sgn * 3.15, -1.25, 1.6, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = gold;                            // ana altın kubbe
+    ctx.beginPath(); ctx.ellipse(sgn * 3.15, -1.5, 1.45, 1.25, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = goldHi;                          // üst highlight
+    ctx.beginPath(); ctx.ellipse(sgn * 3.15, -2.05, 0.85, 0.45, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';                       // keskin ışık yansıması noktası
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.arc(sgn * 3.15 - sgn * 0.4, -2.1, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 
   // Kafa (en üstte)
   ctx.fillStyle = body;
