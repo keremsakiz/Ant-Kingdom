@@ -239,6 +239,7 @@ function loadSprite(path) {
 // Ranger sprite'ini oyun acilirken yuklemeye basla (pop'u onler)
 const RANGER_SPR = loadSprite('assets/ranger.png');
 const MOAT_SPR = loadSprite('assets/moat.png');
+const BARRICADE_SPR = loadSprite('assets/barricade.png');
 
 function getEmojiSprite(emoji, fontPx) {
   const key = emoji + '|' + fontPx;
@@ -1947,6 +1948,23 @@ class Building {
         ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
       }
       // --- /MOAT ---
+    } else if (this.type === 'barricade') {
+      // --- BARRICADE (Barikat): PNG sprite (emoji yok) ---
+      if (BARRICADE_SPR.ready) {
+        const iw = BARRICADE_SPR.img.width, ih = BARRICADE_SPR.img.height;
+        const drawW = 50 * s;
+        const drawH = drawW * (ih / iw);         // en-boy oranı korunur
+        ctx.save();
+        ctx.filter = 'brightness(1.05) saturate(1.1)';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(BARRICADE_SPR.img, x - drawW / 2 + 3 * s, cy - drawH * 0.55, drawW, drawH);
+        ctx.restore();
+      } else {
+        // Henuz yuklenmediyse: generic emoji cizimine guvenli dusus (spr/sz zaten hazir)
+        ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
+      }
+      // --- /BARRICADE ---
     } else {
       ctx.drawImage(spr.canvas, x - sz / 2, cy - sz / 2, sz, sz);
     }
